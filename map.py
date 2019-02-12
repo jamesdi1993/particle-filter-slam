@@ -1,3 +1,5 @@
+from utils.map_utils import recover_from_log_odds
+
 import numpy as np
 import math
 import matplotlib.pyplot as plt
@@ -31,8 +33,15 @@ class Map():
     self.xmax = config['xmax']
     self.ymin = config['ymin']
     self.ymax = config['ymax']
-    self.sizex = int(np.ceil((self.xmax - self.xmin) / self.res + 1))  # cells
-    self.sizey = int(np.ceil((self.ymax - self.ymin) / self.res + 1))
+    if not ((self.xmax - self.xmin) / self.res).is_integer():
+      raise ValueError("xmax - xmin must be divided evenly by res. xmax: %s, xmin: %s, res: %s"
+                                 % (self.xmax, self.xmin, self.res))
+    if not ((self.ymax - self.ymin) / self.res).is_integer():
+      raise ValueError("ymax - ymin must be divided evenly by res. xmax: %s, xmin: %s, res: %s"
+                                 % (self.ymax, self.ymin, self.res))
+    self.sizex = int((self.xmax - self.xmin) / self.res + 1)  # cells
+    self.sizey = int((self.ymax - self.ymin) / self.res + 1)
+    self.error_ratio = 4
     self.map = np.zeros((self.sizey, self.sizex), dtype=np.int8)  # DATA TYPE: char or int8
 
   def plot(self, epoch):
@@ -40,15 +49,30 @@ class Map():
     Plot the current map
     :return: N/A
     """
+    thresholded_map = np.zeros(self.map.shape)
+    thresholded_map[self.map > 0] = 1
+    thresholded_map[self.map <= 0] = 0
     figure = plt.figure(figsize = (10,10))
-    plt.imshow(self.map, cmap="hot")
+
+    plt.imshow(thresholded_map, cmap="gray")
     plt.title('Displaying map at the %d epoch.' % epoch)
     plt.show()
 
-
-  def update(self):
+  # TODO: Implement this method;
+  def update_free(self, grids):
     """
-    Update the map according to current measurements;
+    Update the log-likelihood of the map;
+    :param grids: The grids that are observed to be free
     :return:
     """
-    pass
+    self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(1 / self.error_ratio)
+
+  # TODO: Implement this method;
+  def update_occupied(self, grids):
+    """
+    Update the log-likelihood of the map;
+    :param grids: The grids that are observed to be occupied
+    :return: None
+    """
+    self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(self.error_ratio)
+

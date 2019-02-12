@@ -65,7 +65,7 @@ def bresenham2D(sx, sy, ex, ey):
     dx,dy = dy,dx # swap 
 
   if dy == 0:
-    q = np.zeros((dx+1,1))
+    q = np.zeros((dx+1, 1))
   else:
     q = np.append(0,np.greater_equal(np.diff(np.mod(np.arange( np.floor(dx/2), -dy*dx+np.floor(dx/2)-1,-dy),dx)),0))
   if steep:
@@ -231,14 +231,12 @@ def transform_to_lidar_frame(distances, angles):
   # print("The first five angles are: %s" % angles[:5])
   # print("The shape of distances is: %s" % (distances.shape, ))
 
-  xs = (distances * np.cos(angles)).T# xs = d * cos(\theta)
+  xs = (distances * np.cos(angles)).T # xs = d * cos(\theta)
   ys = (distances * np.sin(angles)).T # ys = d * sin(\theta)
-  # print('The shape of xs is: %s' % (xs.shape, ))
-  # print('The shape of ys is: %s' % (ys.shape, ))
 
   coords = np.concatenate((np.expand_dims(xs, axis = 2), np.expand_dims(ys, axis = 2)), axis = 2)
   # print("The shape of coords is: %s" % (coords.shape,))
-  print("The first 5 coordinates are: %s" % coords[:5, 0, :])
+  # print("The first 5 coordinates are: %s" % coords[:5, 0, :])
   return coords
 
 
@@ -267,7 +265,7 @@ def tranform_from_body_to_world_frame(pos, coords):
   # rotation in 2D
   c, s = math.cos(pos[-1]), math.sin(pos[-1])
   r_to_w_matrix[0:2, 0:2] = np.array([[c, -s], [s, c]])
-  # return to_homogenuous(r_to_w_matrix.dot(coords_hom.transpose()).transpose())
+  return from_homogenuous(coords_hom.dot(r_to_w_matrix))
 
 def to_homogenuous(coords_euclid):
   """
@@ -284,7 +282,18 @@ def from_homogenuous(coords_hom):
   :param coords_hom: the homogenuous coordinate; A m x n x (d + 1) array
   :return: An euclidean coordinate. A m x n x d array
   """
-  return np.divide(coords_hom[:, :, :-1], coords_hom[:, :, -1])
+  return np.divide(coords_hom[:, :, :-1], coords_hom[:, :, -1:])
+
+
+# convert xy to rc coordinate;
+def xy_to_rc(sizex, sizey, x, y):
+  rows = (np.ceil(sizey / 2) - y).astype(int)
+  cols = (x + np.ceil(sizex / 2)).astype(int)
+  return np.vstack((rows, cols))
+
+
+def recover_from_log_odds(x):
+  return 1 - (1 / (1 + np.exp(x)))
 
 if __name__ == '__main__':
   show_lidar()
