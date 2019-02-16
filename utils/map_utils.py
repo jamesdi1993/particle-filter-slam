@@ -129,7 +129,6 @@ def test_mapCorrelation():
   MAP['sizex']  = int(np.ceil((MAP['xmax'] - MAP['xmin']) / MAP['res'] + 1)) #cells
   MAP['sizey']  = int(np.ceil((MAP['ymax'] - MAP['ymin']) / MAP['res'] + 1))
   MAP['map'] = np.zeros((MAP['sizex'],MAP['sizey']),dtype=np.int8) #DATA TYPE: char or int8
-  
 
   
   # xy position in the sensor frame
@@ -286,14 +285,14 @@ def from_homogenuous(coords_hom):
 
 
 # convert xy to rc coordinate;
-def xy_to_rc(sizex, sizey, x, y):
-  rows = (np.ceil(sizey / 2) - y).astype(int)
-  cols = (x + np.ceil(sizex / 2)).astype(int)
+def xy_to_rc(x_range, y_range, x, y, res):
+  rows = (np.absolute(y - y_range/2)/res).astype(int)
+  cols = ((x_range/2 + x)/res).astype(int)
   return np.vstack((rows, cols))
-
 
 def recover_from_log_odds(x):
   return 1 - (1 / (1 + np.exp(x)))
+
 
 if __name__ == '__main__':
   show_lidar()
