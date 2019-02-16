@@ -49,12 +49,12 @@ class Map():
     Plot the current map
     :return: N/A
     """
-    thresholded_map = np.zeros(self.map.shape)
-    thresholded_map[self.map > 0] = 1
-    thresholded_map[self.map <= 0] = 0
+    # print("The maximum of log likelihoods is: %s" % np.max(self.map))
+    # print("The minimum of log likelihoods is: %s" % np.min(self.map))
+    map_prob = 1 - np.divide(np.ones(self.map.shape), 1 + np.exp(self.map))
     figure = plt.figure(figsize = (10,10))
 
-    plt.imshow(thresholded_map, cmap="gray")
+    plt.imshow(map_prob, cmap="gray")
     plt.title('Displaying map at the %d epoch.' % epoch)
     plt.show()
 
