@@ -7,3 +7,6 @@ LIDAR_MIN = 0.1
 LIDAR_MAX = 30
 
 P_LIDAR_TO_BODY = [0.29833, 0, 0.51435]
+
+distance_per_tic = 0.0022
+

@@ -41,6 +41,8 @@ class Map():
                                  % (self.ymax, self.ymin, self.res))
     self.sizex = int((self.xmax - self.xmin) / self.res + 1)  # cells
     self.sizey = int((self.ymax - self.ymin) / self.res + 1)
+    self.xrange = self.xmax - self.xmin
+    self.yrange = self.ymax - self.ymin
     self.error_ratio = 4
     self.map = np.zeros((self.sizey, self.sizex), dtype=np.int8)  # DATA TYPE: char or int8
 
@@ -56,6 +58,15 @@ class Map():
 
     plt.imshow(thresholded_map, cmap="gray")
     plt.title('Displaying map at the %d epoch.' % epoch)
+    plt.show()
+
+  def plot_robot_trajectory(self, trajectory):
+    print("The max index of trajectory is: %s" % np.max(trajectory))
+    figure = plt.figure(figsize=(10, 10))
+    trajectory_map = np.zeros(self.map.shape)
+    trajectory_map[trajectory[0], trajectory[1]] = 1
+    plt.imshow(trajectory_map, cmap="hot")
+    plt.title('Displaying robot trajectory')
     plt.show()
 
   # TODO: Implement this method;
