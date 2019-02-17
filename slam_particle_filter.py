@@ -2,13 +2,11 @@ from load_data import load_data
 from map import Map
 from robot_pos import RobotPos
 from utils.map_utils import transform_to_lidar_frame, transform_from_lidar_to_body_frame,\
-  tranform_from_body_to_world_frame, bresenham2D, xy_to_rc
-from utils.robot_utils import LIDAR_ANGLES, distance_per_tic
+  tranform_from_body_to_world_frame
+from utils.robot_utils import LIDAR_ANGLES
 from utils.signal_process_utils import low_pass_imu
 
-import math
 import numpy as np
-import matplotlib.pyplot as plt
 
 
 def next_reading(encoder_counts, encoder_timestamps, imu_yaw_velocity, imu_timestamps, current_encoder_index,
@@ -82,18 +80,21 @@ if __name__ == '__main__':
 
 
   # Initalize robot position
-  robot_pos = RobotPos(numParticles= 1)
+  initial_pos = np.array([0,0,0]) # x, y, theta
+  robot_pos = RobotPos(initial_pos, numParticles= 1)
   
   # Initialize map;
   map = Map(config)
   map.plot(robot_pos, epoch = 0)
 
 
-  # Plotting the trajectory of the robot;
+  # Preprocess IMU and Encoder measurements;
   encoder_counts = data['encoder_counts']
   encoder_timestamp = data['encoder_stamps']
 
   imu_yaw_velocity = data['imu_angular_velocity'][2, :]
+  imu_timestamps = data['imu_stamps']
+
   filtered_imu_yaw_velocity = low_pass_imu(imu_yaw_velocity)
 
   # Transform the lidar data to the body frame;
@@ -103,19 +104,21 @@ if __name__ == '__main__':
   lidar_xy = transform_to_lidar_frame(lidar_range, LIDAR_ANGLES)
   lidar_body = transform_from_lidar_to_body_frame(lidar_xy)
 
-  # figure = plt.figure(figsize=(10,10))
-  # plt.plot(imu_yaw_velocity, 'b')
-  # plt.plot(filtered_imu_yaw_velocity, 'r')
-  # plt.show()
-  #
-  # print("The first five yaw velocity are: %s" % imu_yaw_velocity[0:5])
+  """
+  figure = plt.figure(figsize=(10,10))
+  plt.plot(imu_yaw_velocity, 'b')
+  plt.plot(filtered_imu_yaw_velocity, 'r')
+  plt.show()
+  
+  print("The first five yaw velocity are: %s" % imu_yaw_velocity[0:5])
 
-  # Low pass filter with threshold = 0.5
-  imu_timestamps = data['imu_stamps']
+  Low pass filter with threshold = 0.5
+  """
 
   current_imu_index = -1
   current_encoder_index = -1
 
+  # First reading from IMU and Encoder;
   current_encoder_index, current_imu_index, current_encoder_counts, yaw_v_average = next_reading(encoder_counts,
                                                                                        encoder_timestamp,
                                                                                        filtered_imu_yaw_velocity,
@@ -123,13 +126,9 @@ if __name__ == '__main__':
                                                                                        current_encoder_index,
                                                                                        current_imu_index)
 
-  # Start with the zero index;
+  # First lidar reading;
   current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], 0, lidar_timestamps)
-
   current_lidar_body = lidar_body[:, current_lidar_index, :]
-
-  # Initializing robot trajectory; n + 1 timestamps because we initialize trajectory to be [0,0,0] at t = -1
-  robot_trajectory = np.zeros((3, encoder_timestamp.shape[0]))
 
   """
   Main loop for running the following steps:
@@ -141,59 +140,23 @@ if __name__ == '__main__':
   while (current_encoder_index is not None):
     # Mapping;
     print("Executing for the %dth epoch." % (current_encoder_index,))
-    position = robot_pos.get_position()
+    position = robot_pos.get_best_particle_pos()
     current_lidar_world = tranform_from_body_to_world_frame(position, current_lidar_body)
-    print("The shape of the lidar rays in world frame is: %s" % (current_lidar_world.shape,))
 
-    # Plot obstacles for the current frame;
-    for i in range(current_lidar_world.shape[0]):
-
-      x = current_lidar_world[i, 0]
-      y = current_lidar_world[i, 1]
-
-      if not math.isnan(x) and not math.isnan(y) and map.check_range(x, y):
-        # Update free cells;
-        grids_xy = bresenham2D(position[0, 0], position[1, 0], x, y)
-        grids_rc = xy_to_rc(map.xrange, map.yrange, grids_xy[0], grids_xy[1], map.res)
-        map.update_free(grids_rc)
-
-        # Update occupied cells;
-        end_rc = xy_to_rc(map.xrange, map.yrange, np.array([x]), np.array([y]), map.res)
-        map.update_occupied(end_rc)
-
-
-    # Plot every 200 steps:
-    if current_encoder_index % 200 == 0:
-      map.plot(robot_pos, epoch=current_encoder_index)
+    # Plot obstacles for the current frame; Update log odds;
+    map.update_log_odds(current_lidar_world, position)
 
     # Prediction;
     time_elapsed = 0.025 if current_encoder_index == 0 else \
       encoder_timestamp[current_encoder_index] - encoder_timestamp[current_encoder_index - 1]
-    d_w = time_elapsed * yaw_v_average
-    d_r = (current_encoder_counts[0] + current_encoder_counts[2]) * distance_per_tic / 2  # (FR + RR) * 0.0022 / 2
-    d_l = (current_encoder_counts[1] + current_encoder_counts[3]) * distance_per_tic / 2  # (FL + RL) * 0.0022 / 2
-    d = (d_r + d_l) / 2
 
-    x = 0
-    y = 0
-    theta = 0
+    robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed)
 
-    if (current_encoder_index == 0):
-      theta = d_w
-      x = d * math.cos(theta)
-      y = d * math.sin(theta)
-    else:
-      theta = (robot_trajectory[2, current_encoder_index - 1] + d_w) % (2 * math.pi)
-      x = robot_trajectory[0, current_encoder_index - 1] + d * math.cos(theta)
-      y = robot_trajectory[1, current_encoder_index - 1] + d * math.sin(theta)
 
-    # TODO: Add observation step here.
+    # TODO: Update based on observation;
 
-    # Update robot position
-    pos_new = np.array([x, y, theta])
-    robot_pos.update_position(np.expand_dims(pos_new, axis = 1))
-    robot_trajectory[:, current_encoder_index] = pos_new
 
+    # Get the next encoder measurements;
 
     current_encoder_index, current_imu_index, current_encoder_counts, yaw_v_average = next_reading(encoder_counts,
                                                                                            encoder_timestamp,
@@ -204,6 +167,10 @@ if __name__ == '__main__':
     # Get the next lidar measurement;
     current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], current_lidar_index, lidar_timestamps)
     current_lidar_body = lidar_body[:, current_lidar_index, :]
+
+    # Plot every 200 steps:
+    if current_encoder_index % 100 == 0:
+      map.plot(robot_pos, epoch=current_encoder_index)
 
 
   """

@@ -245,7 +245,7 @@ def transform_from_lidar_to_body_frame(coordinates):
   :param coordinates: The coordinates in lidar frame, a m x n x 2 array
   :return: The coordinates in robot body frame, a m x n x 2 array
   """
-  transformed_coords =  coordinates + P_LIDAR_TO_BODY[:2] # drop the last dimension
+  transformed_coords = coordinates + P_LIDAR_TO_BODY[:2] # drop the last dimension
   print("print the first five coordinates: %s" % transformed_coords[:5, 0, :])
   return transformed_coords
 
