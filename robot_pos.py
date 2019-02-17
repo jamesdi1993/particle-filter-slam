@@ -52,3 +52,8 @@ class RobotPos():
     """
     self.particles = [particle.update_pos(left_d, right_d, angular_d) for particle in self.particles]
 
+  def get_position(self):
+    return self.position
+
+  def update_position(self, position):
+    self.position = position

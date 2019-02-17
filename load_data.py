@@ -33,8 +33,8 @@ def load_data(dataset_index):
     dataset['lidar_ranges'] = data["ranges"]       # range data [m] (Note: values < range_min or > range_max should be discarded
     print("The shape of lidar_ranges is: %s" % (dataset['lidar_ranges'].shape,))
 
-    dataset['lidar_stamsp'] = data["time_stamps"]  # acquisition times of the lidar scans
-    print("The shape of lidar_stamsp is: %s" % (dataset['lidar_stamsp'].shape,))
+    dataset['lidar_stamps'] = data["time_stamps"]  # acquisition times of the lidar scans
+    print("The shape of lidar_stamsp is: %s" % (dataset['lidar_stamps'].shape,))
 
     
   with np.load("Imu%d.npz"%dataset_index) as data:

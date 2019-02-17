@@ -1,8 +1,10 @@
-from utils.map_utils import recover_from_log_odds
+from utils.map_utils import recover_from_log_odds, xy_to_rc
+from matplotlib.patches import Circle
 
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+
 
 class Map():
 
@@ -46,18 +48,23 @@ class Map():
     self.error_ratio = 4
     self.map = np.zeros((self.sizey, self.sizex), dtype=np.int8)  # DATA TYPE: char or int8
 
-  def plot(self, epoch):
+  def plot(self, robot_pos, epoch):
     """
-    Plot the current map
+    Plot the current map, and the robot pos
     :return: N/A
     """
     # print("The maximum of log likelihoods is: %s" % np.max(self.map))
     # print("The minimum of log likelihoods is: %s" % np.min(self.map))
     map_prob = 1 - np.divide(np.ones(self.map.shape), 1 + np.exp(self.map))
-    figure = plt.figure(figsize = (10,10))
+    pos = robot_pos.get_position()
+    pos_rc = xy_to_rc(self.xrange, self.yrange, pos[0], pos[1], self.res)
+    circ = Circle((pos_rc[0], pos_rc[1]), 1, color='blue')
+    figure, ax = plt.subplots(1)
 
-    plt.imshow(map_prob, cmap="gray")
+    ax.imshow(map_prob, cmap="gray")
+    ax.add_patch(circ)
     plt.title('Displaying map at the %d epoch.' % epoch)
+
     plt.show()
 
   def plot_robot_trajectory(self, trajectory):
@@ -86,4 +93,7 @@ class Map():
     :return: None
     """
     self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(self.error_ratio)
+
+  def check_range(self, x, y):
+    return x < self.xmax and x > self.xmin and y < self.ymax and y > self.ymin
 
