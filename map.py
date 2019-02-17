@@ -1,4 +1,5 @@
 from utils.map_utils import bresenham2D, recover_from_log_odds, xy_to_rc
+from utils.robot_utils import LIDAR_ANGLES
 from matplotlib.patches import Circle
 
 import numpy as np
@@ -28,9 +29,9 @@ class Map():
     self.xrange = self.xmax - self.xmin
     self.yrange = self.ymax - self.ymin
     self.error_ratio = 4
-    self.map = np.zeros((self.sizey, self.sizex), dtype=np.int8)  # DATA TYPE: char or int8
+    self.map = np.zeros((self.sizey, self.sizex), dtype=np.float64)  # DATA TYPE: char or int8
 
-  def plot(self, robot_pos, epoch):
+  def plot(self, robot_pos, title):
     """
     Plot the current map, and the robot pos
     :return: N/A
@@ -39,15 +40,21 @@ class Map():
     # print("The minimum of log likelihoods is: %s" % np.min(self.map))
     map_prob = 1 - np.divide(np.ones(self.map.shape), 1 + np.exp(self.map))
     pos = robot_pos.get_best_particle_pos()
+    particle_positions = robot_pos.get_particles_pos() # 3 x n array
+
     pos_rc = xy_to_rc(self.xrange, self.yrange, pos[0], pos[1], self.res)
-    circ = Circle((pos_rc[0], pos_rc[1]), 1, color='blue')
+    circ = Circle((pos_rc[0], pos_rc[1]), 0.5, color='blue')
+
+    particle_positions_rc = xy_to_rc(self.xrange, self.yrange, particle_positions[0,:], particle_positions[1,:], self.res)
     figure, ax = plt.subplots(1)
 
     ax.imshow(map_prob, cmap="gray")
-    ax.add_patch(circ)
-    plt.title('Displaying map at the %d epoch.' % epoch)
+    # ax.add_patch(circ)
+    ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
+    plt.title(title)
 
     plt.show()
+
 
   def plot_robot_trajectory(self, trajectory):
     print("The max index of trajectory is: %s" % np.max(trajectory))
@@ -65,7 +72,8 @@ class Map():
     :param grids: The grids that are observed to be free
     :return:
     """
-    self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(1 / self.error_ratio)
+    if grids.size > 0:
+      self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(1 / self.error_ratio)
 
   def update_occupied(self, grids):
     """
@@ -73,7 +81,9 @@ class Map():
     :param grids: The grids that are observed to be occupied
     :return: None
     """
-    self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(self.error_ratio)
+    if grids.size > 0:
+      self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(self.error_ratio)
+      # print("The center of log maps is: %s" % (self.map[60, 60]))
 
   def check_range(self, x, y):
     return x < self.xmax and x > self.xmin and y < self.ymax and y > self.ymin
@@ -94,11 +104,18 @@ class Map():
 
       if not math.isnan(x) and not math.isnan(y) and self.check_range(x, y):
         # Update free cells;
-        grids_xy = bresenham2D(robot_pos[0], robot_pos[1], x, y)
-        grids_rc = xy_to_rc(self.xrange, self.yrange, grids_xy[0], grids_xy[1], self.res)
-        self.update_free(grids_rc)
+        start_rc = xy_to_rc(self.xrange, self.yrange, np.array([robot_pos[0]]), np.array([robot_pos[1]]), self.res)
+        end_rc = xy_to_rc(self.xrange, self.yrange, np.array([x]), np.array([y]), self.res)
+        grids_free_rc = bresenham2D(start_rc[0, 0], start_rc[1, 0], end_rc[0, 0], end_rc[1, 0])
+
+        # Update free cells; Drop the last one as the last one correspond to the occupied cell.
+        self.update_free(grids_free_rc[:, :-1])
 
         # Update occupied cells;
-        end_rc = xy_to_rc(self.xrange, self.yrange, np.array([x]), np.array([y]), self.res)
         self.update_occupied(end_rc)
+
+      # plotting every 12.5 degrees;
+      # if i % 50 == 0:
+      #   title = "Displaying map after updating lidar ranges from %s to %s." % (LIDAR_ANGLES[0], LIDAR_ANGLES[i])
+      #   self.plot(robot_pos, title=title)
 

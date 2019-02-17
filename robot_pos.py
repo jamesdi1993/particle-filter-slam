@@ -14,29 +14,32 @@ class Particle():
   def update_pos(self, pos):
     self.pos = pos
 
-  def update_pos_with_measurements(self, encoder_counts, yaw_average, time_elapsed):
+  def update_pos_with_measurements(self, encoder_counts, yaw_average, time_elapsed, d_sigma):
     """
     Update the position of the particle from encoder counts and yaw_average;
     :param encoder_counts: The counts of the encoder
     :param yaw_average: The average of yaw velocity
     :param time_elapsed: The time period over which the encoder counts and yaw average is collected
+    :param d_sigma: The sigma added to the distance; per 0.025 sec.
     :return: N/A
     """
     d_w = time_elapsed * yaw_average
     d_r = (encoder_counts[0] + encoder_counts[2]) * distance_per_tic / 2
     d_l = (encoder_counts[1] + encoder_counts[3]) * distance_per_tic / 2
-    self.update_pos_with_distances(d_l, d_r, d_w)
+    self.update_pos_with_distances(d_l, d_r, d_w, d_sigma)
 
-  def update_pos_with_distances(self, left_d, right_d, angular_d):
+  def update_pos_with_distances(self, left_d, right_d, angular_d, d_sigma):
     """
     Update the position of the particle.
     :param left_d: The displacement of the left wheel
     :param right_d: The displacement of the right wheel
     :param angular_d: The delta of the angle;
+    :param d_sigma: The sigma added to the distance; per 0.025 sec.
     :return: N/A
     """
     d = (left_d + right_d) / 2 # d = (d_f + d_y) * distance_per_tic / 2
-    dx, dy = d * math.cos(self.pos[2]), d * math.sin(self.pos[2])
+    d_w_noise = np.random.normal(d, d * d_sigma)
+    dx, dy = d_w_noise * math.cos(self.pos[2]), d_w_noise * math.sin(self.pos[2])
     self.pos[0] = self.pos[0] + dx  # x = d * cos(\theta);
     self.pos[1] = self.pos[1] + dy  # y = d * sin(\theta)
     self.pos[2] = (self.pos[2] + angular_d) % (2 * math.pi)
@@ -58,16 +61,17 @@ class RobotPos():
     self.num_particles = numParticles
     print("The particles are: %s" % (self.particles[0]))
 
-  def predict_particles(self, encoder_counts, yaw_average, time_elapsed):
+  def predict_particles(self, encoder_counts, yaw_average, time_elapsed, d_sigma = 0):
     """
     Update the position of the particle from encoder counts and yaw_average;
     :param encoder_counts: The counts of the encoder
     :param yaw_average: The average of yaw velocity
     :param time_elapsed: The time period over which the encoder counts and yaw average is collected
+    :param v_sigma: Noise add to the particles, in meter. Gaussian with mean d and sigma d_sigma
     :return: N/A
     """
     for particle in self.particles:
-      particle.update_pos_with_measurements(encoder_counts, yaw_average, time_elapsed)
+      particle.update_pos_with_measurements(encoder_counts, yaw_average, time_elapsed, d_sigma)
 
   def get_best_particle(self):
     """
@@ -103,3 +107,12 @@ class RobotPos():
 
     # Normalized weight;
     return pos / weights
+
+  def get_particles(self):
+    return self.particles
+
+  def get_particles_pos(self):
+    particle_positions = np.zeros((3, len(self.particles))).astype(float)
+    for i in range(len(self.particles)):
+      particle_positions[:, i] = self.particles[i].get_pos()
+    return particle_positions

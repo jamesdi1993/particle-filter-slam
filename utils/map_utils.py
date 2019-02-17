@@ -1,5 +1,6 @@
 from mpl_toolkits.mplot3d import Axes3D
-from utils.robot_utils import LIDAR_MIN, LIDAR_MAX, P_LIDAR_TO_BODY
+from utils.robot_utils import P_LIDAR_TO_BODY
+from load_data import load_data
 
 import numpy as np
 import math
@@ -86,7 +87,7 @@ def bresenham2D(sx, sy, ex, ey):
       y = sy + np.cumsum(q)
     else:
       y = sy - np.cumsum(q)
-  return np.vstack((x,y))
+  return np.vstack((x,y)).astype(int)
     
 
 def test_bresenham2D():
@@ -193,9 +194,9 @@ def test_mapCorrelation():
   plt.show()
   
   
-def show_lidar():
+def show_lidar_with_file(filename):
   angles = np.arange(-135,135.25,0.25)*np.pi/180.0
-  ranges = np.load("test_ranges.npy")
+  ranges = np.load(filename)
   ax = plt.subplot(111, projection='polar')
   ax.plot(angles, ranges)
   ax.set_rmax(10)
@@ -205,9 +206,8 @@ def show_lidar():
   ax.set_title("Lidar scan data", va='bottom')
   plt.show()
 
-def show_lidar(lidar_file):
-  angles = np.arange(-135,135.25, 0.25) * np.pi/180.0
-  ranges = np.load(lidar_file)
+def show_lidar_with_ranges(ranges):
+  angles = np.arange(-135, 135.25, 0.25) * np.pi/180.0
   ax = plt.subplot(111, projection='polar')
   ax.plot(angles, ranges)
   ax.set_rmax(10)
@@ -220,13 +220,13 @@ def show_lidar(lidar_file):
 def transform_to_lidar_frame(distances, angles):
   """
   Transform the lidar distances into the coordinates of lidar frame; xy coordinates
-  :param distances: The distances of the lidar scan. d x n array
+  :param distances: The distances of the lidar scan. n x d array
   :param angles: The angles for the lidar; a d-dimensional array
   :return: Coordinates of the closest obstacle detected by each laser, a d x n x 2 array
   """
   # print("The first five distances are: %s" % distances[:5, 0])
-  distances[(distances < LIDAR_MIN) | (distances > LIDAR_MAX)] = float('nan') # filter-out values that are out of range
   distances = distances.T
+
   # print("The first five angles are: %s" % angles[:5])
   # print("The shape of distances is: %s" % (distances.shape, ))
 
@@ -295,7 +295,17 @@ def recover_from_log_odds(x):
 
 
 if __name__ == '__main__':
-  show_lidar()
+  # dataset_index = 20
+  # filename = "Hokuyo%d.npz" % dataset_index
+  # filename = "test_ranges.npy"
+  data = load_data(dataset_index=20)
+  ranges = data['lidar_ranges'][:, 0]
+  range_min = data['lidar_range_min']
+  print("The minimum range is: %s" % np.min(range_min))
+  range_max = data['lidar_range_max']
+  print("The maximum range is: %s" % np.max(range_min))
+  show_lidar_with_ranges(ranges)
   test_mapCorrelation()
   test_bresenham2D()
+  print("Finished testing. ")
   
