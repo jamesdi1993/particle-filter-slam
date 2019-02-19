@@ -1,5 +1,5 @@
-from utils.robot_utils import distance_per_tic
-from utils.map_utils import mapCorrelation
+from utils.robot_utils import distance_per_tic, yaw_deviation_res
+from utils.map_utils import mapCorrelation, tranform_from_body_to_world_frame
 import math
 import numpy as np
 
@@ -61,10 +61,11 @@ class RobotPos():
 
   def __init__(self, initial_pos, numParticles = 1, particle_threshold = 1):
     # self.position = np.array(initial_pos)  # estimated position of the robot, a 3 x 1 array
-    self.particles = [Particle(initial_pos, float(1)/numParticles) for x in range(numParticles)] # initialize particle
     self.num_particles = numParticles
     self.n_threshold = particle_threshold
-    print("The particles are: %s" % (self.particles[0]))
+
+    initial_particle = np.expand_dims(np.append(initial_pos, 1.0/self.num_particles).T, axis = 1) # 4 x 1 array
+    self.particles = np.tile(initial_particle, (1, self.num_particles)) # Particles is a 4 x n array [x, y, theta, weight]^T
 
   def predict_particles(self, encoder_counts, yaw_average, time_elapsed, d_sigma = 0):
     """
@@ -75,15 +76,30 @@ class RobotPos():
     :param v_sigma: Noise add to the particles, in meter. Gaussian with mean d and sigma d_sigma
     :return: N/A
     """
-    for particle in self.particles:
-      particle.update_pos_with_measurements(encoder_counts, yaw_average, time_elapsed, d_sigma)
+    d_w = time_elapsed * yaw_average
+    d_r = (encoder_counts[0] + encoder_counts[2]) * distance_per_tic / 2
+    d_l = (encoder_counts[1] + encoder_counts[3]) * distance_per_tic / 2
+    d = (d_r + d_l) / 2  # d = (d_f + d_y) * distance_per_tic / 2
 
-  def update_particles(self, lidar_reading, map, deviation):
+    c = np.cos(self.particles[2, :]) # 1 x n array
+    s = np.sin(self.particles[2, :])  # 1 x n array
+
+    # Add noise to the linear displacement;
+    d_w_noise = np.random.normal(d, d * d_sigma, self.num_particles)
+    dx = d_w_noise * c
+    dy = d_w_noise * s
+
+    self.particles[0, :] = self.particles[0, :] + dx
+    self.particles[1, :] = self.particles[1, :] + dy
+    self.particles[2, :] = (self.particles[2, :] + d_w) % (2 * math.pi)
+
+  def update_particles(self, lidar_body, map, deviation, yaw_deviation):
     """
     Update the weight of the particles based on lidar readings.
-    :param lidar_reading: The most recent lidar reading in the world frame. 1081 x 2;
+    :param lidar_body: The most recent lidar reading in the body frame. 1081 x 2;
     :param map: the current map of the environment
     :param deviation: the size of the area to evaluate correlation for.
+    :param yaw_deviation:
     :return: N/A
     """
     x_im = np.arange(map.xmin, map.xmax + map.res, map.res)  # x-positions of each pixel of the map
@@ -93,21 +109,24 @@ class RobotPos():
     # print("The number of occupied cells vs. free cells: %s" % (np.unique(binary_map, return_counts=True), ))
     # print("The indices of the occupied cells are: %s" % (np.argwhere(binary_map > 0, )))
 
-    correlations = np.zeros((len(self.particles)))
+    correlations = np.zeros((self.num_particles))
 
     # Temporarily storing all particle weights
-    particle_weights = np.zeros(len(self.particles))
+    particle_weights = np.copy(self.particles[3, :])
+
 
     # Compute map correlation for each particle
-    for i in range(len(self.particles)):
-      particle = self.particles[i]
-      pos = particle.get_pos()  # robot_pos, in the world frame
-      # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
-      x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
-      y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
-      c = mapCorrelation(binary_map, x_im, y_im, lidar_reading.T, x_range, y_range)
-      correlations[i] = np.max(c)
-      particle_weights[i] = particle.get_weight()
+    for i in range(self.num_particles):
+      pos = self.particles[:-1, i]
+      for yaw in np.arange(pos[2] - yaw_deviation / 2, pos[2] + yaw_deviation / 2 + yaw_deviation_res, yaw_deviation_res):
+        pos_w_noise = np.copy(pos)
+        pos_w_noise[2] = yaw % (2 * math.pi)  # add noise to yaw;
+        lidar_world = tranform_from_body_to_world_frame(pos_w_noise, lidar_body)
+        # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
+        x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
+        y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
+        c = mapCorrelation(binary_map, x_im, y_im, lidar_world.T, x_range, y_range)
+        correlations[i] = np.maximum(correlations[i], np.max(c))
 
     # Update weight for each particle
     # softmax(z_i) = softmax(z_i - max(z))
@@ -120,9 +139,7 @@ class RobotPos():
     particle_weights = particle_weights / np.sum(particle_weights)
 
     # Assign new weights
-    for j in range(len(self.particles)):
-      particle = self.particles[j]
-      particle.update_weight(particle_weights[j])
+    self.particles[3, :] = particle_weights
 
     weights_sum = np.dot(particle_weights, particle_weights.T)
 
@@ -130,59 +147,36 @@ class RobotPos():
     if 1.0 / weights_sum < self.n_threshold:
       self.resample_particles()
 
-  def get_best_particle(self):
-    """
-    Get the particle of the highest weight.
-    :return: The particle of the highest weight.
-    """
-    highest_weight = 0
-    best_particle = None
-    for particle in self.particles:
-      if particle.weight > highest_weight:
-        best_particle = particle
-        highest_weight = particle.weight
-    return best_particle
 
   def get_best_particle_pos(self):
     """
     Get the position of the best particle.
     :return: The position of the best particle.
     """
-    best_particle = self.get_best_particle()
-    return best_particle.get_pos()
+    best_particle_index = np.argmax(self.particles[3, :])
+    return self.particles[:-1, best_particle_index]
 
   def get_weighted_position(self):
-    """
-    Get the weighted average of the particle set
-    :return: The best guess of the robot position.
-    """
-    pos = np.array([0,0,0])
-    weights = 0
-    for particle in self.particles:
-      pos += particle.weight * particle.get_pos()
-      weights += particle.weight
-
-    # Normalized weight;
-    return pos / weights
+    pass
 
   def get_particles(self):
     return self.particles
 
   def get_particles_pos(self):
-    particle_positions = np.zeros((3, len(self.particles))).astype(float)
-    for i in range(len(self.particles)):
-      particle_positions[:, i] = self.particles[i].get_pos()
-    return particle_positions
+    return self.particles[:-1, :]
 
   def resample_particles(self):
     """
     Resample particles, based on the weight of the particles
     :return: N/A
     """
-    particle_weights = np.array([particle.get_weight() for particle in self.particles])
-    indices = np.array(range(0, len(self.particles)))
-    particles_indices = np.random.choice(indices, size=self.num_particles, replace=True, p=particle_weights)
-    particles_next = [Particle(self.particles[i].get_pos(), 1.0 / self.num_particles) for i in particles_indices]
+    indices = np.array(range(0, self.num_particles))
+    particles_indices = np.random.choice(indices, size=self.num_particles, replace=True, p=self.particles[3, :])
+    particles_next = np.zeros((4, self.num_particles))
+    for i in range(self.num_particles):
+      j = particles_indices[i]
+      particles_next[:, i] = self.particles[:, j]
+      particles_next[3, i] = 1.0 / self.num_particles # reset weights
     self.particles = particles_next
 
 

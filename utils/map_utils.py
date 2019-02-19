@@ -44,7 +44,7 @@ def mapCorrelation(im, x_im, y_im, vp, xs, ys):
       ix = np.int16(np.round((x1-xmin)/xresolution))
       valid = np.logical_and( np.logical_and((iy >=0), (iy < ny)), \
 			                        np.logical_and((ix >=0), (ix < nx)))
-      cpr[jx,jy] = np.sum(im[iy[valid],ix[valid]])
+      cpr[jx,jy] = np.sum(im[ix[valid],iy[valid]])
 
       # print("The offsets are x: %s; y: %s" % (xs[jx], ys[jy]))
       # # indices = np.vstack((iy, ix))
@@ -225,14 +225,14 @@ def show_lidar_with_ranges(ranges):
   ax.set_title("Lidar scan data", va='bottom')
   plt.show()
 
-def transform_to_lidar_frame(distances, angles):
+def transform_to_lidar_frame(distances, angles, lidar_min, lidar_max):
   """
   Transform the lidar distances into the coordinates of lidar frame; xy coordinates
   :param distances: The distances of the lidar scan. a 1081 1-dimension array
   :param angles: The angles for the lidar; a 1081 1-dimension array
   :return: Coordinates of the closest obstacle detected by each laser, a 1081 x 2 array
   """
-  valid = np.logical_and(distances > LIDAR_MIN_JITTER, distances < LIDAR_MAX)
+  valid = np.logical_and(distances > lidar_min, distances < lidar_max)
   distances_valid = distances[valid]
   angles_valid = angles[valid]
 
@@ -262,7 +262,7 @@ def tranform_from_body_to_world_frame(pos, coords):
   :param coords: The coordinates to be transformed;
   :return: The coordinates in the world frame
   """
-  coords_hom = to_homogenuous(coords)
+  coords_hom = to_homogenuous(coords) # copy
   r_to_w_matrix = np.identity(pos.shape[0]) # 3 x 3 matrix
   # p
   r_to_w_matrix[0, -1] = pos[0]
@@ -278,7 +278,7 @@ def to_homogenuous(coords_euclid):
   :param coords_euclid: euclidean coordinates.  A m x d array
   :return: homogenuous coordinate. A m x (d + 1) array
   """
-  print("The shape of the coordinates is: %s" % (coords_euclid.shape, ))
+  # print("The shape of the coordinates is: %s" % (coords_euclid.shape, ))
   return np.append(coords_euclid, np.ones((coords_euclid.shape[0], 1)), axis = 1);
 
 def from_homogenuous(coords_hom):
@@ -297,8 +297,8 @@ def from_homogenuous(coords_hom):
 #   return np.vstack((rows, cols))
 
 def xy_to_rc(x_min, y_min, x, y, res):
-  cols = np.int16(np.round((x - x_min) / res))
-  rows = np.int16(np.round((y - y_min) / res))
+  rows = np.int16(np.round((x - x_min) / res))
+  cols = np.int16(np.round((y - y_min) / res))
   return np.vstack((rows, cols))
 
 def recover_from_log_odds(x):

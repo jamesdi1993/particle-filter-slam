@@ -29,7 +29,7 @@ class Map():
     self.xrange = self.xmax - self.xmin
     self.yrange = self.ymax - self.ymin
     self.error_ratio = 4
-    self.map = np.zeros((self.sizey, self.sizex), dtype=np.float64)  # DATA TYPE: char or int8
+    self.map = np.zeros((self.sizex, self.sizey), dtype=np.float64)  # DATA TYPE: char or int8
     self.log_odds_min = -10   # log-odds min ratio
     self.log_odds_max = 10    # log-odds max ratio
 
@@ -61,7 +61,7 @@ class Map():
     figure, ax = plt.subplots(1)
 
     # Plot origin at the lower-left corner;
-    ax.imshow(map_prob, cmap="gray", origin = "lower")
+    ax.imshow(map_prob, cmap="gray", origin = "upper")
     # ax.add_patch(circ)
     ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
     plt.title(title)
