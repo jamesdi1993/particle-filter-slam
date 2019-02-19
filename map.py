@@ -31,6 +31,16 @@ class Map():
     self.error_ratio = 4
     self.map = np.zeros((self.sizey, self.sizex), dtype=np.float64)  # DATA TYPE: char or int8
 
+
+  def get_binary_map(self):
+    """
+    Get the binary version of the log odds map
+    :return: the binary log map;
+    """
+    binary_map = (self.map > 0).astype(int)
+    return binary_map
+
+
   def plot(self, robot_pos, title):
     """
     Plot the current map, and the robot pos
@@ -96,16 +106,22 @@ class Map():
     :param robot_pos: The position of the robot;
     :return:
     """
+
+    print("Before updating log odds the number of occupied vs. free cells are: %s" % (np.unique(self.map, return_counts= True),))
     # Plot obstacles for the current frame;
+    num_occupied = 0
+
     for i in range(current_lidar_world.shape[0]):
 
       x = current_lidar_world[i, 0]
       y = current_lidar_world[i, 1]
 
-      if not math.isnan(x) and not math.isnan(y) and self.check_range(x, y):
+      if self.check_range(x, y):
         # Update free cells;
-        start_rc = xy_to_rc(self.xrange, self.yrange, np.array([robot_pos[0]]), np.array([robot_pos[1]]), self.res)
-        end_rc = xy_to_rc(self.xrange, self.yrange, np.array([x]), np.array([y]), self.res)
+        num_occupied += 1
+        print("The number of occupied cells are: %d" % num_occupied)
+        start_rc = xy_to_rc(self.xmin, self.ymin, np.array([robot_pos[0]]), np.array([robot_pos[1]]), self.res)
+        end_rc = xy_to_rc(self.xmin, self.ymin, np.array([x]), np.array([y]), self.res)
         grids_free_rc = bresenham2D(start_rc[0, 0], start_rc[1, 0], end_rc[0, 0], end_rc[1, 0])
 
         # Update free cells; Drop the last one as the last one correspond to the occupied cell.
@@ -114,6 +130,8 @@ class Map():
         # Update occupied cells;
         self.update_occupied(end_rc)
 
+    print("After updating log odds the number of occupied vs. free cells are: %s" % (self.map[np.nonzero(self.map > 0)].size,))
+    print("Done printing values. ")
       # plotting every 12.5 degrees;
       # if i % 50 == 0:
       #   title = "Displaying map after updating lidar ranges from %s to %s." % (LIDAR_ANGLES[0], LIDAR_ANGLES[i])

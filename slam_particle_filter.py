@@ -64,9 +64,6 @@ def get_last_lidar_measurement(encoder_timestamp, current_lidar_index, lidar_tim
       next_measurement_index = i
   return next_measurement_index
 
-
-
-
 if __name__ == '__main__':
   # Load data
   data = load_data(dataset_index = 20)
@@ -79,11 +76,11 @@ if __name__ == '__main__':
   }
 
   d_sigma = 1 # Controls the spread of the particles
-
+  correlation_deviation = 1;
 
   # Initalize robot position
   initial_pos = np.array([0,0,0]) # x, y, theta
-  robot_pos = RobotPos(initial_pos, numParticles=100)
+  robot_pos = RobotPos(initial_pos, numParticles=3)
   
   # Initialize map;
   map = Map(config)
@@ -102,15 +99,7 @@ if __name__ == '__main__':
 
   # Transform the lidar data to the body frame;
   lidar_timestamps = data['lidar_stamps']
-  lidar_range = data['lidar_ranges']
-
-  # Filter out the values
-
-  # Add Jitter to make sure the object and the robot doesn't fall in the same grid;
-  lidar_range[(lidar_range < map.res + LIDAR_MIN_JITTER) | (lidar_range > LIDAR_MAX)] = float('nan')  # filter-out values that are out of range
-
-  lidar_xy = transform_to_lidar_frame(lidar_range, LIDAR_ANGLES)
-  lidar_body = transform_from_lidar_to_body_frame(lidar_xy)
+  lidar_range = data['lidar_ranges'] # 1081 x 4962
 
   """
   figure = plt.figure(figsize=(10,10))
@@ -136,7 +125,9 @@ if __name__ == '__main__':
 
   # First lidar reading;
   current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], 0, lidar_timestamps)
-  current_lidar_body = lidar_body[:, current_lidar_index, :]
+  current_lidar = lidar_range[:, current_lidar_index]
+  current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES) # 1081 x 2
+  current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
 
   """
   Main loop for running the following steps:
@@ -158,12 +149,12 @@ if __name__ == '__main__':
     time_elapsed = 0.025 if current_encoder_index == 0 else \
       encoder_timestamp[current_encoder_index] - encoder_timestamp[current_encoder_index - 1]
 
-    # Update the position of the particles;
+    # Predict the position of the particles;
     robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed, d_sigma)
 
 
-    # TODO: Update based on observation;
-
+    # Update the positions of the particles
+    robot_pos.update_particles(current_lidar_world, map, deviation=correlation_deviation)
 
     # Get the next encoder measurements;
 
@@ -175,12 +166,14 @@ if __name__ == '__main__':
                                                                                            current_imu_index)
     # Get the next lidar measurement;
     current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], current_lidar_index, lidar_timestamps)
-    current_lidar_body = lidar_body[:, current_lidar_index, :]
+    current_lidar = lidar_range[:, current_lidar_index]
+    current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES)
+    current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
 
     # Plot every 100 steps:
-    if current_encoder_index % 100 == 0:
-      title = "Displaying map at the %dth epoch." % current_encoder_index
-      map.plot(robot_pos, title=title)
+    # if current_encoder_index % 100 == 0:
+    title = "Displaying map at the %dth epoch." % current_encoder_index
+    map.plot(robot_pos, title=title)
 
 
   """

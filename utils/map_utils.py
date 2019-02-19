@@ -1,5 +1,5 @@
 from mpl_toolkits.mplot3d import Axes3D
-from utils.robot_utils import P_LIDAR_TO_BODY
+from utils.robot_utils import P_LIDAR_TO_BODY, LIDAR_MIN_JITTER, LIDAR_MAX
 from load_data import load_data
 
 import numpy as np
@@ -45,6 +45,14 @@ def mapCorrelation(im, x_im, y_im, vp, xs, ys):
       valid = np.logical_and( np.logical_and((iy >=0), (iy < ny)), \
 			                        np.logical_and((ix >=0), (ix < nx)))
       cpr[jx,jy] = np.sum(im[ix[valid],iy[valid]])
+
+      print("The offsets are x: %s; y: %s" % (xs[jx], ys[jy]))
+      # indices = np.vstack((iy, ix))
+      # print("The number of laser hit cells are: %s" % (iy.shape,))
+      print("The correlation is: %s" % cpr[jx,jy])
+      print("The valid cells are:  %s" % (np.argwhere(valid.astype(int) > 0), ))
+      print("The number of unique values of valid cells are: %s" % (np.unique(valid.astype(int), return_counts=True),))
+      print("The number of valid cells are: %s" % (ix[valid].shape, ))
   return cpr
 
 
@@ -220,20 +228,18 @@ def show_lidar_with_ranges(ranges):
 def transform_to_lidar_frame(distances, angles):
   """
   Transform the lidar distances into the coordinates of lidar frame; xy coordinates
-  :param distances: The distances of the lidar scan. n x d array
-  :param angles: The angles for the lidar; a d-dimensional array
-  :return: Coordinates of the closest obstacle detected by each laser, a d x n x 2 array
+  :param distances: The distances of the lidar scan. a 1081 1-dimension array
+  :param angles: The angles for the lidar; a 1081 1-dimension array
+  :return: Coordinates of the closest obstacle detected by each laser, a 1081 x 2 array
   """
-  # print("The first five distances are: %s" % distances[:5, 0])
-  distances = distances.T
+  valid = np.logical_and(distances > LIDAR_MIN_JITTER, distances < LIDAR_MAX)
+  distances_valid = distances[valid]
+  angles_valid = angles[valid]
 
-  # print("The first five angles are: %s" % angles[:5])
-  # print("The shape of distances is: %s" % (distances.shape, ))
+  xs = distances_valid * np.cos(angles_valid) # xs = d * cos(\theta)
+  ys = distances_valid * np.sin(angles_valid) # ys = d * sin(\theta)
 
-  xs = (distances * np.cos(angles)).T # xs = d * cos(\theta)
-  ys = (distances * np.sin(angles)).T # ys = d * sin(\theta)
-
-  coords = np.concatenate((np.expand_dims(xs, axis = 2), np.expand_dims(ys, axis = 2)), axis = 2)
+  coords = np.vstack((xs, ys)).T
   # print("The shape of coords is: %s" % (coords.shape,))
   # print("The first 5 coordinates are: %s" % coords[:5, 0, :])
   return coords
@@ -246,14 +252,14 @@ def transform_from_lidar_to_body_frame(coordinates):
   :return: The coordinates in robot body frame, a m x n x 2 array
   """
   transformed_coords = coordinates + P_LIDAR_TO_BODY[:2] # drop the last dimension
-  print("print the first five coordinates: %s" % transformed_coords[:5, 0, :])
+  print("print the first five coordinates: %s" % transformed_coords[:5, :])
   return transformed_coords
 
 def tranform_from_body_to_world_frame(pos, coords):
   """
   Transform coordinates from the body to the world frame, specified by pos.
   :param pos: The position of the robot. d x 1 array
-  :param coords: The coordinates to be transformed
+  :param coords: The coordinates to be transformed;
   :return: The coordinates in the world frame
   """
   coords_hom = to_homogenuous(coords)
@@ -290,6 +296,11 @@ def xy_to_rc(x_range, y_range, x, y, res):
   cols = ((x_range/2 + x)/res).astype(int)
   return np.vstack((rows, cols))
 
+# def xy_to_rc(x_min, y_min, x, y, res):
+#   cols = np.int16(np.round((x - x_min) / res))
+#   rows = np.int16(np.round((y - y_min) / res))
+#   return np.vstack((rows, cols))
+
 def recover_from_log_odds(x):
   return 1 - (1 / (1 + np.exp(x)))
 
@@ -300,10 +311,7 @@ if __name__ == '__main__':
   # filename = "test_ranges.npy"
   data = load_data(dataset_index=20)
   ranges = data['lidar_ranges'][:, 0]
-  range_min = data['lidar_range_min']
-  print("The minimum range is: %s" % np.min(range_min))
-  range_max = data['lidar_range_max']
-  print("The maximum range is: %s" % np.max(range_min))
+
   show_lidar_with_ranges(ranges)
   test_mapCorrelation()
   test_bresenham2D()

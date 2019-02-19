@@ -1,4 +1,5 @@
 from utils.robot_utils import distance_per_tic
+from utils.map_utils import mapCorrelation
 import math
 import numpy as np
 
@@ -8,8 +9,8 @@ class Particle():
     self.pos = np.array(pos).astype(float) #x, y, \theta
     self.weight = weight
 
-  def update_weight(self, weight):
-    self.weight = weight
+  def update_weight(self, likelihood):
+    self.weight = self.weight * math.exp(likelihood)
 
   def update_pos(self, pos):
     self.pos = pos
@@ -47,6 +48,9 @@ class Particle():
   def get_pos(self):
     return self.pos
 
+  def get_weight(self):
+    return self.weight
+
   def __repr__(self):
     return "Position: %s; \n Weight: %s" % (self.pos.T, self.weight)
 
@@ -55,10 +59,11 @@ class Particle():
 
 class RobotPos():
 
-  def __init__(self, initial_pos, numParticles = 1):
+  def __init__(self, initial_pos, numParticles = 1, particle_threshold = 1):
     # self.position = np.array(initial_pos)  # estimated position of the robot, a 3 x 1 array
     self.particles = [Particle(initial_pos, float(1)/numParticles) for x in range(numParticles)] # initialize particle
     self.num_particles = numParticles
+    self.n_threshold = particle_threshold
     print("The particles are: %s" % (self.particles[0]))
 
   def predict_particles(self, encoder_counts, yaw_average, time_elapsed, d_sigma = 0):
@@ -72,6 +77,46 @@ class RobotPos():
     """
     for particle in self.particles:
       particle.update_pos_with_measurements(encoder_counts, yaw_average, time_elapsed, d_sigma)
+
+  def update_particles(self, lidar_reading, map, deviation):
+    """
+    Update the weight of the particles based on lidar readings.
+    :param lidar_reading: The most recent lidar reading in the world frame. 1081 x 2;
+    :param map: the current map of the environment
+    :param deviation: the size of the area to evaluate correlation for.
+    :return: N/A
+    """
+    x_im = np.arange(map.xmin, map.xmax + map.res, map.res)  # x-positions of each pixel of the map
+    y_im = np.arange(map.ymin, map.ymax + map.res, map.res)  # y-positions of each pixel of the map
+    binary_map = map.get_binary_map()
+
+    print("The number of occupied cells vs. free cells: %s" % (np.unique(binary_map, return_counts=True), ))
+    print("The indices of the occupied cells are: %s" % (np.argwhere(binary_map > 0, )))
+
+    correlations = np.zeros((len(self.particles)))
+
+    # Compute map correlation for each particle
+    for i in range(len(self.particles)):
+      particle = self.particles[i]
+      pos = particle.get_pos()  # robot_pos, in the world frame
+      # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
+      x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
+      y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
+      c = mapCorrelation(binary_map, x_im, y_im, lidar_reading.T, x_range, y_range)
+      correlations[i] = np.max(c)
+
+    # Update weight for each particle
+    # softmax(z_i) = softmax(z_i - max(z))
+    correlations = correlations - np.max(correlations)
+    weights_sum = 0
+    for i in range(len((self.particles))):
+      particle = self.particles[i]
+      particle.update_weight(correlations[i])
+      weights_sum += particle.weight ** 2
+
+    # TODO: Check if the particles are depleted; Otherwise, resample;
+    if 1.0 / weights_sum < self.n_threshold:
+      self.resample_particles()
 
   def get_best_particle(self):
     """
@@ -116,3 +161,16 @@ class RobotPos():
     for i in range(len(self.particles)):
       particle_positions[:, i] = self.particles[i].get_pos()
     return particle_positions
+
+  def resample_particles(self):
+    """
+    Resample particles, based on the weight of the particles
+    :return: N/A
+    """
+    particle_weights = np.array([particle.get_weight() for particle in self.particles])
+    indices = np.array(range(0, len(self.particles)))
+    particles_indices = np.random.choice(indices, size=self.num_particles, replace=True, p=particle_weights)
+    particles_next = [Particle(self.particles[i].get_pos(), 1.0 / len(self.num_particles)) for i in particles_indices]
+    self.particles = particles_next
+
+
