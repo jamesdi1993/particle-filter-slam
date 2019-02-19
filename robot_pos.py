@@ -9,8 +9,8 @@ class Particle():
     self.pos = np.array(pos).astype(float) #x, y, \theta
     self.weight = weight
 
-  def update_weight(self, likelihood):
-    self.weight = self.weight * math.exp(likelihood)
+  def update_weight(self, weight):
+    self.weight = weight
 
   def update_pos(self, pos):
     self.pos = pos
@@ -90,10 +90,13 @@ class RobotPos():
     y_im = np.arange(map.ymin, map.ymax + map.res, map.res)  # y-positions of each pixel of the map
     binary_map = map.get_binary_map()
 
-    print("The number of occupied cells vs. free cells: %s" % (np.unique(binary_map, return_counts=True), ))
-    print("The indices of the occupied cells are: %s" % (np.argwhere(binary_map > 0, )))
+    # print("The number of occupied cells vs. free cells: %s" % (np.unique(binary_map, return_counts=True), ))
+    # print("The indices of the occupied cells are: %s" % (np.argwhere(binary_map > 0, )))
 
     correlations = np.zeros((len(self.particles)))
+
+    # Temporarily storing all particle weights
+    particle_weights = np.zeros(len(self.particles))
 
     # Compute map correlation for each particle
     for i in range(len(self.particles)):
@@ -104,15 +107,24 @@ class RobotPos():
       y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
       c = mapCorrelation(binary_map, x_im, y_im, lidar_reading.T, x_range, y_range)
       correlations[i] = np.max(c)
+      particle_weights[i] = particle.get_weight()
 
     # Update weight for each particle
     # softmax(z_i) = softmax(z_i - max(z))
     correlations = correlations - np.max(correlations)
-    weights_sum = 0
-    for i in range(len((self.particles))):
-      particle = self.particles[i]
-      particle.update_weight(correlations[i])
-      weights_sum += particle.weight ** 2
+
+    # Update particle weights;
+    particle_weights = particle_weights * np.exp(correlations)
+
+    # Normalize
+    particle_weights = particle_weights / np.sum(particle_weights)
+
+    # Assign new weights
+    for j in range(len(self.particles)):
+      particle = self.particles[j]
+      particle.update_weight(particle_weights[j])
+
+    weights_sum = np.dot(particle_weights, particle_weights.T)
 
     # TODO: Check if the particles are depleted; Otherwise, resample;
     if 1.0 / weights_sum < self.n_threshold:
@@ -170,7 +182,7 @@ class RobotPos():
     particle_weights = np.array([particle.get_weight() for particle in self.particles])
     indices = np.array(range(0, len(self.particles)))
     particles_indices = np.random.choice(indices, size=self.num_particles, replace=True, p=particle_weights)
-    particles_next = [Particle(self.particles[i].get_pos(), 1.0 / len(self.num_particles)) for i in particles_indices]
+    particles_next = [Particle(self.particles[i].get_pos(), 1.0 / self.num_particles) for i in particles_indices]
     self.particles = particles_next
 
 

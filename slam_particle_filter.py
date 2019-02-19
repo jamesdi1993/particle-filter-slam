@@ -68,7 +68,7 @@ if __name__ == '__main__':
   # Load data
   data = load_data(dataset_index = 20)
   config = {
-    'res': 0.5,
+    'res': 0.25,
     'xmin': -30,
     'xmax': 30,
     'ymin': -30,
@@ -76,21 +76,21 @@ if __name__ == '__main__':
   }
 
   d_sigma = 1 # Controls the spread of the particles
-  correlation_deviation = 1;
+  correlation_deviation = 0.5;
 
   # Initalize robot position
   initial_pos = np.array([0,0,0]) # x, y, theta
-  robot_pos = RobotPos(initial_pos, numParticles=3)
+  robot_pos = RobotPos(initial_pos, numParticles=100, particle_threshold=50)
   
   # Initialize map;
   map = Map(config)
   title = "Displaying robot at the 0 epoch."
-  map.plot(robot_pos, title)
+  map.plot(robot_pos, title = title)
 
 
   # Preprocess IMU and Encoder measurements;
-  encoder_counts = data['encoder_counts']
-  encoder_timestamp = data['encoder_stamps']
+  encoder_counts = data['encoder_counts'][:, 200:] #Skipping the first 200 hundred measurements;
+  encoder_timestamp = data['encoder_stamps'][200:]
 
   imu_yaw_velocity = data['imu_angular_velocity'][2, :]
   imu_timestamps = data['imu_stamps']
@@ -171,9 +171,9 @@ if __name__ == '__main__':
     current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
 
     # Plot every 100 steps:
-    # if current_encoder_index % 100 == 0:
-    title = "Displaying map at the %dth epoch." % current_encoder_index
-    map.plot(robot_pos, title=title)
+    if current_encoder_index % 100 == 0:
+      title = "Displaying map at the %dth epoch." % current_encoder_index
+      map.plot(robot_pos, title=title)
 
 
   """

@@ -30,6 +30,8 @@ class Map():
     self.yrange = self.ymax - self.ymin
     self.error_ratio = 4
     self.map = np.zeros((self.sizey, self.sizex), dtype=np.float64)  # DATA TYPE: char or int8
+    self.log_odds_min = -10   # log-odds min ratio
+    self.log_odds_max = 10    # log-odds max ratio
 
 
   def get_binary_map(self):
@@ -52,13 +54,14 @@ class Map():
     pos = robot_pos.get_best_particle_pos()
     particle_positions = robot_pos.get_particles_pos() # 3 x n array
 
-    pos_rc = xy_to_rc(self.xrange, self.yrange, pos[0], pos[1], self.res)
+    pos_rc = xy_to_rc(self.xmin, self.ymin, pos[0], pos[1], self.res)
     circ = Circle((pos_rc[0], pos_rc[1]), 0.5, color='blue')
 
-    particle_positions_rc = xy_to_rc(self.xrange, self.yrange, particle_positions[0,:], particle_positions[1,:], self.res)
+    particle_positions_rc = xy_to_rc(self.xmin, self.ymin, particle_positions[0,:], particle_positions[1,:], self.res)
     figure, ax = plt.subplots(1)
 
-    ax.imshow(map_prob, cmap="gray")
+    # Plot origin at the lower-left corner;
+    ax.imshow(map_prob, cmap="gray", origin = "lower")
     # ax.add_patch(circ)
     ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
     plt.title(title)
@@ -83,7 +86,8 @@ class Map():
     :return:
     """
     if grids.size > 0:
-      self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(1 / self.error_ratio)
+      self.map[grids[0], grids[1]] = np.maximum(self.log_odds_min * np.ones(grids.shape[1]),
+                                                self.map[grids[0], grids[1]] + math.log(1 / self.error_ratio))
 
   def update_occupied(self, grids):
     """
@@ -92,7 +96,8 @@ class Map():
     :return: None
     """
     if grids.size > 0:
-      self.map[grids[0], grids[1]] = self.map[grids[0], grids[1]] + math.log(self.error_ratio)
+      self.map[grids[0], grids[1]] = np.minimum(self.log_odds_max * np.ones(grids.shape[1]),
+                                                self.map[grids[0], grids[1]] + math.log(self.error_ratio))
       # print("The center of log maps is: %s" % (self.map[60, 60]))
 
   def check_range(self, x, y):
@@ -107,7 +112,7 @@ class Map():
     :return:
     """
 
-    print("Before updating log odds the number of occupied vs. free cells are: %s" % (np.unique(self.map, return_counts= True),))
+    # print("Before updating log odds the number of occupied vs. free cells are: %s" % (np.unique(self.map, return_counts= True),))
     # Plot obstacles for the current frame;
     num_occupied = 0
 
@@ -119,7 +124,6 @@ class Map():
       if self.check_range(x, y):
         # Update free cells;
         num_occupied += 1
-        print("The number of occupied cells are: %d" % num_occupied)
         start_rc = xy_to_rc(self.xmin, self.ymin, np.array([robot_pos[0]]), np.array([robot_pos[1]]), self.res)
         end_rc = xy_to_rc(self.xmin, self.ymin, np.array([x]), np.array([y]), self.res)
         grids_free_rc = bresenham2D(start_rc[0, 0], start_rc[1, 0], end_rc[0, 0], end_rc[1, 0])
@@ -130,8 +134,9 @@ class Map():
         # Update occupied cells;
         self.update_occupied(end_rc)
 
-    print("After updating log odds the number of occupied vs. free cells are: %s" % (self.map[np.nonzero(self.map > 0)].size,))
-    print("Done printing values. ")
+    # print("The number of occupied cells are: %d" % num_occupied)
+    # print("After updating log odds the number of occupied vs. free cells are: %s" % (self.map[np.nonzero(self.map > 0)].size,))
+    # print("Done printing values. ")
       # plotting every 12.5 degrees;
       # if i % 50 == 0:
       #   title = "Displaying map after updating lidar ranges from %s to %s." % (LIDAR_ANGLES[0], LIDAR_ANGLES[i])

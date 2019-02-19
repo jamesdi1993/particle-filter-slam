@@ -44,15 +44,15 @@ def mapCorrelation(im, x_im, y_im, vp, xs, ys):
       ix = np.int16(np.round((x1-xmin)/xresolution))
       valid = np.logical_and( np.logical_and((iy >=0), (iy < ny)), \
 			                        np.logical_and((ix >=0), (ix < nx)))
-      cpr[jx,jy] = np.sum(im[ix[valid],iy[valid]])
+      cpr[jx,jy] = np.sum(im[iy[valid],ix[valid]])
 
-      print("The offsets are x: %s; y: %s" % (xs[jx], ys[jy]))
-      # indices = np.vstack((iy, ix))
-      # print("The number of laser hit cells are: %s" % (iy.shape,))
-      print("The correlation is: %s" % cpr[jx,jy])
-      print("The valid cells are:  %s" % (np.argwhere(valid.astype(int) > 0), ))
-      print("The number of unique values of valid cells are: %s" % (np.unique(valid.astype(int), return_counts=True),))
-      print("The number of valid cells are: %s" % (ix[valid].shape, ))
+      # print("The offsets are x: %s; y: %s" % (xs[jx], ys[jy]))
+      # # indices = np.vstack((iy, ix))
+      # # print("The number of laser hit cells are: %s" % (iy.shape,))
+      # print("The correlation is: %s" % cpr[jx,jy])
+      # print("The valid cells are:  %s" % (np.argwhere(valid.astype(int) > 0), ))
+      # print("The number of unique values of valid cells are: %s" % (np.unique(valid.astype(int), return_counts=True),))
+      # print("The number of valid cells are: %s" % (ix[valid].shape, ))
   return cpr
 
 
@@ -252,7 +252,7 @@ def transform_from_lidar_to_body_frame(coordinates):
   :return: The coordinates in robot body frame, a m x n x 2 array
   """
   transformed_coords = coordinates + P_LIDAR_TO_BODY[:2] # drop the last dimension
-  print("print the first five coordinates: %s" % transformed_coords[:5, :])
+  # print("print the first five coordinates: %s" % transformed_coords[:5, :])
   return transformed_coords
 
 def tranform_from_body_to_world_frame(pos, coords):
@@ -291,15 +291,15 @@ def from_homogenuous(coords_hom):
 
 
 # convert xy to rc coordinate;
-def xy_to_rc(x_range, y_range, x, y, res):
-  rows = (np.absolute(y - y_range/2)/res).astype(int)
-  cols = ((x_range/2 + x)/res).astype(int)
-  return np.vstack((rows, cols))
-
-# def xy_to_rc(x_min, y_min, x, y, res):
-#   cols = np.int16(np.round((x - x_min) / res))
-#   rows = np.int16(np.round((y - y_min) / res))
+# def xy_to_rc(x_range, y_range, x, y, res):
+#   rows = (np.absolute(y - y_range/2)/res).astype(int)
+#   cols = ((x_range/2 + x)/res).astype(int)
 #   return np.vstack((rows, cols))
+
+def xy_to_rc(x_min, y_min, x, y, res):
+  cols = np.int16(np.round((x - x_min) / res))
+  rows = np.int16(np.round((y - y_min) / res))
+  return np.vstack((rows, cols))
 
 def recover_from_log_odds(x):
   return 1 - (1 / (1 + np.exp(x)))
