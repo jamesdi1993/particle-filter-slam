@@ -67,16 +67,16 @@ class RobotPos():
     initial_particle = np.expand_dims(np.append(initial_pos, 1.0/self.num_particles).T, axis = 1) # 4 x 1 array
     self.particles = np.tile(initial_particle, (1, self.num_particles)) # Particles is a 4 x n array [x, y, theta, weight]^T
 
-  def predict_particles(self, encoder_counts, yaw_average, time_elapsed, d_sigma = 0):
+  def predict_particles(self, encoder_counts, yaw_average, time_elapsed, d_sigma = 0, yaw_sigma = 0):
     """
     Update the position of the particle from encoder counts and yaw_average;
     :param encoder_counts: The counts of the encoder
     :param yaw_average: The average of yaw velocity
     :param time_elapsed: The time period over which the encoder counts and yaw average is collected
-    :param v_sigma: Noise add to the particles, in meter. Gaussian with mean d and sigma d_sigma
+    :param d_sigma: Noise add to the particles, in meter. Gaussian with mean d and sigma d_sigma
     :return: N/A
     """
-    d_w = time_elapsed * yaw_average
+    d_w = time_elapsed * np.random.normal(yaw_average, abs(yaw_average * yaw_sigma), self.num_particles)
     d_r = (encoder_counts[0] + encoder_counts[2]) * distance_per_tic / 2
     d_l = (encoder_counts[1] + encoder_counts[3]) * distance_per_tic / 2
     d = (d_r + d_l) / 2  # d = (d_f + d_y) * distance_per_tic / 2
@@ -85,7 +85,7 @@ class RobotPos():
     s = np.sin(self.particles[2, :])  # 1 x n array
 
     # Add noise to the linear displacement;
-    d_w_noise = np.random.normal(d, d * d_sigma, self.num_particles)
+    d_w_noise = np.random.normal(d, abs(d * d_sigma), self.num_particles)
     dx = d_w_noise * c
     dy = d_w_noise * s
 
@@ -145,6 +145,8 @@ class RobotPos():
 
     # TODO: Check if the particles are depleted; Otherwise, resample;
     if 1.0 / weights_sum < self.n_threshold:
+      print("Resampled particles. Weighted sum: %s; Effective particles: %s" % (weights_sum, 1.0 / weights_sum,))
+      print("The highest weight is: %s" % np.max(particle_weights))
       self.resample_particles()
 
 

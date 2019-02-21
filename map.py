@@ -43,7 +43,7 @@ class Map():
     return binary_map
 
 
-  def plot(self, robot_pos, title):
+  def plot(self, robot_pos, title, img_name=None, save_fig=False):
     """
     Plot the current map, and the robot pos
     :return: N/A
@@ -66,7 +66,11 @@ class Map():
     ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
     plt.title(title)
 
-    plt.show()
+    if save_fig:
+      plt.savefig(img_name)
+      plt.clf()
+    else:
+      plt.show()
 
 
   def plot_robot_trajectory(self, trajectory):

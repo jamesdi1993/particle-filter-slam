@@ -9,5 +9,5 @@ LIDAR_MAX = 30
 P_LIDAR_TO_BODY = [0.29833, 0, 0.51435]
 
 distance_per_tic = 0.0022
-yaw_deviation_res = 0.05 # 2.8 degrees
+yaw_deviation_res = 0.02 # 1.14 degrees
 

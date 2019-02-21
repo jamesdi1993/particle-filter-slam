@@ -248,21 +248,25 @@ def transform_to_lidar_frame(distances, angles, lidar_min, lidar_max):
 def transform_from_lidar_to_body_frame(coordinates):
   """
   Transform coordinates in lidar frame to body frame;
-  :param coordinates: The coordinates in lidar frame, a m x n x 2 array
-  :return: The coordinates in robot body frame, a m x n x 2 array
+  :param coordinates: The coordinates in lidar frame, a n x 2 array
+  :return: The coordinates in robot body frame, a n x 2 array
   """
-  transformed_coords = coordinates + P_LIDAR_TO_BODY[:2] # drop the last dimension
+  coords_hom = to_homogenuous(coordinates)
+  l_to_b_matrix = np.identity(coordinates.shape[1] + 1) # 3 x 3 matrix
+  l_to_b_matrix[-1, 0] = P_LIDAR_TO_BODY[0]
+  l_to_b_matrix[-1, 1] = P_LIDAR_TO_BODY[1]
+
   # print("print the first five coordinates: %s" % transformed_coords[:5, :])
-  return transformed_coords
+  return from_homogenuous(coords_hom.dot(l_to_b_matrix))
 
 def tranform_from_body_to_world_frame(pos, coords):
   """
   Transform coordinates from the body to the world frame, specified by pos.
-  :param pos: The position of the robot. d x 1 array
-  :param coords: The coordinates to be transformed;
-  :return: The coordinates in the world frame
+  :param pos: The position of the robot. 1 x 2 array
+  :param coords: The coordinates to be transformed; n x 2 array
+  :return: The coordinates in the world frame. 2 x n array
   """
-  coords_hom = to_homogenuous(coords) # copy
+  coords_hom = to_homogenuous(coords) # copy n x 3
   r_to_w_matrix = np.identity(pos.shape[0]) # 3 x 3 matrix
   # p
   r_to_w_matrix[0, -1] = pos[0]
@@ -270,7 +274,8 @@ def tranform_from_body_to_world_frame(pos, coords):
   # rotation in 2D
   c, s = math.cos(pos[-1]), math.sin(pos[-1])
   r_to_w_matrix[0:2, 0:2] = np.array([[c, -s], [s, c]])
-  return from_homogenuous(coords_hom.dot(r_to_w_matrix))
+  c_transformed_hom = np.dot(r_to_w_matrix, coords_hom.T) # 3 x n matrix
+  return from_homogenuous(c_transformed_hom.T)
 
 def to_homogenuous(coords_euclid):
   """
@@ -284,8 +289,8 @@ def to_homogenuous(coords_euclid):
 def from_homogenuous(coords_hom):
   """
   Transform a homogenuous coordinate into an euclidean coordinate.
-  :param coords_hom: the homogenuous coordinate; A m x (d + 1) array
-  :return: An euclidean coordinate. A m x d array
+  :param coords_hom: the homogenuous coordinate; A n x (d + 1) array
+  :return: An euclidean coordinate. A n x d array
   """
   return np.divide(coords_hom[:, :-1], coords_hom[:, -1:])
 
@@ -304,6 +309,31 @@ def xy_to_rc(x_min, y_min, x, y, res):
 def recover_from_log_odds(x):
   return 1 - (1 / (1 + np.exp(x)))
 
+def test_body_to_world():
+  print("Testing for transform_from_body_to_world frame")
+  r_pos = np.array([1, 1, math.pi / 6])
+  coordinates = np.array([[2, 0], [3.0/2, -math.sqrt(3)/2], [0, 0]])
+  e_coordinates = np.array([[1 + math.sqrt(3), 2], [1 + math.sqrt(3), 1], [1, 1]]).T
+  transformed_coordinates = tranform_from_body_to_world_frame(r_pos, coordinates)
+  if np.sum(transformed_coordinates == e_coordinates) == np.size(e_coordinates):
+    print("...Test passed.")
+  else:
+    print("...Test failed.")
+    print("Transformed coordinates are: %s" % transformed_coordinates)
+    print("Expected coordinates are: %s" % e_coordinates)
+
+def test_lidar_to_body():
+  print("Testing for transforming from_lidar_to_body_frame():")
+  coordinates = np.array([[1, 0], [0, 1], [1, 1]])
+  e_coordinates = np.array([[1.29833, 0], [0.29833, 1], [1.29833, 1]])
+  transformed_coordinates = transform_from_lidar_to_body_frame(coordinates)
+
+  if np.sum(transformed_coordinates == e_coordinates) == np.size(e_coordinates):
+    print("...Test passed.")
+  else:
+    print("...Test failed.")
+    print("Transformed coordinates are: %s" % transformed_coordinates)
+    print("Expected coordinates are: %s" % e_coordinates)
 
 if __name__ == '__main__':
   # dataset_index = 20
@@ -315,5 +345,7 @@ if __name__ == '__main__':
   show_lidar_with_ranges(ranges)
   test_mapCorrelation()
   test_bresenham2D()
+  test_lidar_to_body()
+  test_body_to_world()
   print("Finished testing. ")
   
