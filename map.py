@@ -43,7 +43,7 @@ class Map():
     return binary_map
 
 
-  def plot(self, robot_pos, title, img_name=None, save_fig=False):
+  def plot(self, robot_pos, robot_trajectory, title, img_name=None, save_fig=False):
     """
     Plot the current map, and the robot pos
     :return: N/A
@@ -51,19 +51,27 @@ class Map():
     # print("The maximum of log likelihoods is: %s" % np.max(self.map))
     # print("The minimum of log likelihoods is: %s" % np.min(self.map))
     map_prob = 1 - np.divide(np.ones(self.map.shape), 1 + np.exp(self.map))
-    pos = robot_pos.get_best_particle_pos()
-    particle_positions = robot_pos.get_particles_pos() # 3 x n array
-
-    pos_rc = xy_to_rc(self.xmin, self.ymin, pos[0], pos[1], self.res)
-    circ = Circle((pos_rc[0], pos_rc[1]), 0.5, color='blue')
-
-    particle_positions_rc = xy_to_rc(self.xmin, self.ymin, particle_positions[0,:], particle_positions[1,:], self.res)
     figure, ax = plt.subplots(1)
+
+    if robot_pos is not None:
+      pos = robot_pos.get_best_particle_pos()
+      particle_positions = robot_pos.get_particles_pos() # 3 x n array
+
+      pos_rc = xy_to_rc(self.xmin, self.ymin, pos[0], pos[1], self.res)
+      circ = Circle((pos_rc[0], pos_rc[1]), 0.5, color='blue')
+
+      particle_positions_rc = xy_to_rc(self.xmin, self.ymin, particle_positions[0,:], particle_positions[1,:], self.res)
+
+      # ax.add_patch(circ)
+      ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
+
+    if robot_trajectory is not None and robot_pos is None:
+      trajectory_positions_rc = xy_to_rc(self.xmin, self.ymin, robot_trajectory[0, :], robot_trajectory[1, :], self.res)
+      ax.scatter(trajectory_positions_rc[1], trajectory_positions_rc[0], color='red', marker='o', s=1)
 
     # Plot origin at the lower-left corner;
     ax.imshow(map_prob, cmap="gray", origin = "upper")
-    # ax.add_patch(circ)
-    ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
+
     plt.title(title)
 
     if save_fig:

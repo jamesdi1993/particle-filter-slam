@@ -103,7 +103,7 @@ if __name__ == '__main__':
   # Initialize map;
   map = Map(config)
   title = "Displaying robot at the 0 epoch."
-  map.plot(robot_pos, title = title, save_fig = False)
+  map.plot(robot_pos, robot_trajectory = None, title = title, save_fig = False)
 
 
   # Preprocess IMU and Encoder measurements;
@@ -179,7 +179,7 @@ if __name__ == '__main__':
     if current_encoder_index is not None and current_encoder_index % 1000 == 0:
       title = "After prediction step displaying map at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s" % \
               (current_encoder_index, d_sigma, yaw_sigma, num_particles)
-      map.plot(robot_pos, title=title,
+      map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
                img_name= directory + '/' + str(current_encoder_index) + '-' + "Predict",
                save_fig=save_fig)
 
@@ -205,7 +205,7 @@ if __name__ == '__main__':
     if current_encoder_index is not None and current_encoder_index % 1000 == 0:
       title = "After update step displaying map at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s;" % \
               (current_encoder_index, d_sigma, yaw_sigma, num_particles)
-      map.plot(robot_pos, title=title,
+      map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
                img_name=directory + '/' + str(current_encoder_index) + '-' + "Update",
                save_fig=save_fig)
 
@@ -213,8 +213,8 @@ if __name__ == '__main__':
   # trajectory_coordinate = xy_to_rc(map.xmin, map.ymin, robot_trajectory[0, :], robot_trajectory[1, :], map.res)
   # map.plot_robot_trajectory(trajectory_coordinate)
   title = "Finish map. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s;" % \
-          (current_encoder_index, d_sigma, yaw_sigma, num_particles)
-  map.plot(robot_pos, title=title,
+          (d_sigma, yaw_sigma, num_particles)
+  map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
            img_name=directory + '/' + str(current_encoder_index) + '-' + "Final",
            save_fig=save_fig)
 

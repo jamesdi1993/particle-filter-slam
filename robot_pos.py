@@ -116,17 +116,26 @@ class RobotPos():
 
 
     # Compute map correlation for each particle
+    # for i in range(self.num_particles):
+    #   pos = self.particles[:-1, i]
+    #   for yaw in np.arange(pos[2] - yaw_deviation / 2, pos[2] + yaw_deviation / 2 + yaw_deviation_res, yaw_deviation_res):
+    #     pos_w_noise = np.copy(pos)
+    #     pos_w_noise[2] = yaw % (2 * math.pi)  # add noise to yaw;
+    #     lidar_world = tranform_from_body_to_world_frame(pos_w_noise, lidar_body)
+    #     # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
+    #     x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
+    #     y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
+    #     c = mapCorrelation(binary_map, x_im, y_im, lidar_world.T, x_range, y_range)
+    #     correlations[i] = np.maximum(correlations[i], np.max(c))
+
     for i in range(self.num_particles):
       pos = self.particles[:-1, i]
-      for yaw in np.arange(pos[2] - yaw_deviation / 2, pos[2] + yaw_deviation / 2 + yaw_deviation_res, yaw_deviation_res):
-        pos_w_noise = np.copy(pos)
-        pos_w_noise[2] = yaw % (2 * math.pi)  # add noise to yaw;
-        lidar_world = tranform_from_body_to_world_frame(pos_w_noise, lidar_body)
-        # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
-        x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
-        y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
-        c = mapCorrelation(binary_map, x_im, y_im, lidar_world.T, x_range, y_range)
-        correlations[i] = np.maximum(correlations[i], np.max(c))
+      lidar_world = tranform_from_body_to_world_frame(pos, lidar_body)
+      # Evaluate for the rectangle centered on the robot position, with half-width correlation_size / 2
+      x_range = np.arange(pos[0] - deviation / 2, pos[0] + deviation / 2 + map.res, map.res)
+      y_range = np.arange(pos[1] - deviation / 2, pos[1] + deviation / 2 + map.res, map.res)
+      c = mapCorrelation(binary_map, x_im, y_im, lidar_world.T, x_range, y_range)
+      correlations[i] = np.maximum(correlations[i], np.max(c))
 
     # Update weight for each particle
     # softmax(z_i) = softmax(z_i - max(z))
