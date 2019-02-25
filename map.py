@@ -59,12 +59,12 @@ class Map():
       particle_positions = robot_pos.get_particles_pos() # 3 x n array
 
       pos_rc = xy_to_rc(self.xmin, self.ymin, pos[0], pos[1], self.res)
-      circ = Circle((pos_rc[0], pos_rc[1]), 0.5, color='blue')
+      circ = Circle((pos_rc[0], pos_rc[1]), 1, color='green')
 
       particle_positions_rc = xy_to_rc(self.xmin, self.ymin, particle_positions[0,:], particle_positions[1,:], self.res)
 
-      # ax.add_patch(circ)
       ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=0.5)
+      ax.add_patch(circ)
 
     if robot_trajectory is not None and robot_pos is None:
       trajectory_positions_rc = xy_to_rc(self.xmin, self.ymin, robot_trajectory[0, :], robot_trajectory[1, :], self.res)
@@ -82,7 +82,7 @@ class Map():
       plt.show()
 
   def plot_texture(self, title, img_name, save_fig = False):
-    texture_rgb = np.zeros((self.texture_map.shape[0], self.texture_map.shape[1], 3))
+    texture_rgb = np.zeros((self.texture_map.shape[0], self.texture_map.shape[1], 3)).astype(int)
     counts = self.texture_map[:, :, -1]
     nonzeros = np.where(counts != 0)
 
@@ -91,8 +91,8 @@ class Map():
     texture_rgb[:, :, 2][nonzeros] = np.rint(self.texture_map[:, :, 2][nonzeros] / counts[nonzeros])
     # division in two steps: first with nonzero cells, and then zero cells
     # texture_rgb[nonzeros, :] = texture_rgb[nonzeros, :] / counts[nonzeros]
-    # print("The max of texture map is: %s" % (np.max(self.texture_map)))
-    # print("The max of rgb is: %s" % (np.max(self.texture_map[:, :, 0:3])))
+    print("The max of texture map is: %s" % (np.max(texture_rgb)))
+    print("The max of rgb is: %s" % (np.max(texture_rgb[:, :, 0:3])))
     # print("The max of count is: %s" % (np.max(self.texture_map[:, :, -1])))
     # texture = np.divide(texture_rgb, counts, out=np.zeros_like(texture_rgb), where=counts!=0)
     # np.nan_to_num(texture, copy = False)
@@ -100,7 +100,7 @@ class Map():
     # print("The max of R channel is: %s" % (np.max(texture_rgb[:, :, 0])))
     # print("The max of G channel is: %s" % (np.max(texture_rgb[:, :, 1])))
     # print("The max of B channel is: %s" % (np.max(texture_rgb[:, :, 2])))
-    plt.imshow(texture_rgb.astype(int))
+    plt.imshow(texture_rgb)
     plt.title(title)
 
     if save_fig:

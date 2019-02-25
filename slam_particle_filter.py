@@ -103,25 +103,20 @@ def process_image(rgb_image, disparity_img, robot_pos, map):
     map.update_texture(rc[:, i], rgb_values[i, :])
   # toc(start)
 
-
-
-
-
-
 if __name__ == '__main__':
-  dataset_index = 20
-
   d_sigma = float(sys.argv[1])
   yaw_sigma = float(sys.argv[2])
   num_particles = int(sys.argv[3])
-  save_fig = bool(sys.argv[4])
+  save_fig = bool(int(sys.argv[4]))
+  texture_map = bool(int(sys.argv[5]))
+  dataset_index = int(sys.argv[6])
 
-  directory = ""
-  if num_particles == 1:
-    directory = "dead-reckoning"
-  else:
-    directory = str(d_sigma) + "-" + str(yaw_sigma) + "-" + str(num_particles)
-  os.mkdir(directory)
+  directory = "final-report/"
+  # if num_particles == 1:
+  #   directory = "dead-reckoning"
+  # else:
+  directory = directory + str(dataset_index) + "/" + str(d_sigma) + "-" + str(yaw_sigma) + "-" + str(num_particles)
+  os.makedirs(directory)
 
   print("The linear velocity noise is: %s" % d_sigma)
   print("The yaw velocity noise is: %s" % yaw_sigma)
@@ -130,7 +125,7 @@ if __name__ == '__main__':
   start_time = tic()
 
   # Load data
-  data = load_data(dataset_index = dataset_index)
+  data = load_data(dataset_index = dataset_index, load_image = texture_map)
   config = {
     'res': 0.05,
     'xmin': -10,
@@ -155,8 +150,8 @@ if __name__ == '__main__':
 
 
   # Preprocess IMU and Encoder measurements;
-  encoder_counts = data['encoder_counts'][:, 300:-1] # Skipping the first 400 hundred measurements;
-  encoder_timestamp = data['encoder_stamps'][300:-1]
+  encoder_counts = data['encoder_counts'][:, 400:-1] # Skipping the first 400 hundred measurements;
+  encoder_timestamp = data['encoder_stamps'][400:-1]
 
   imu_yaw_velocity = data['imu_angular_velocity'][2, :]
   imu_timestamps = data['imu_stamps']
@@ -171,42 +166,30 @@ if __name__ == '__main__':
   depth_images_prefix = './dataRGBD/Disparity%s/disparity%s_' % (dataset_index, dataset_index)
   rgb_images_prefix = './dataRGBD/RGB%s/rgb%s_' % (dataset_index, dataset_index)
 
-  disp_timestamp = data['disp_stamps']
-  rgb_timestamp = data['rgb_stamps']
-  image_timestamp = correlate_timestamp(rgb_timestamp, disp_timestamp)
-
-  """
-  figure = plt.figure(figsize=(10,10))
-  plt.plot(imu_yaw_velocity, 'b')
-  plt.plot(filtered_imu_yaw_velocity, 'r')
-  plt.show()
-  
-  print("The first five yaw velocity are: %s" % imu_yaw_velocity[0:5])
-
-  Low pass filter with threshold = 0.5
-  """
+  disp_timestamp = data.get('disp_stamps')
+  rgb_timestamp = data.get('rgb_stamps')
+  image_timestamp = None
+  if disp_timestamp is not None and rgb_timestamp is not None:
+    image_timestamp = correlate_timestamp(rgb_timestamp, disp_timestamp)
 
   current_imu_index = -1
   current_encoder_index = -1
+  current_disp_index = -1
+  current_lidar_index = -1
 
-  # First reading from IMU and Encoder;
   current_encoder_index, current_imu_index, current_encoder_counts, yaw_v_average = next_reading(encoder_counts,
-                                                                                       encoder_timestamp,
-                                                                                       filtered_imu_yaw_velocity,
-                                                                                       imu_timestamps,
-                                                                                       current_encoder_index,
-                                                                                       current_imu_index)
-
-  # First lidar reading;
-  current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], 0, lidar_timestamps)
+                                                                                                 encoder_timestamp,
+                                                                                                 filtered_imu_yaw_velocity,
+                                                                                                 imu_timestamps,
+                                                                                                 current_encoder_index,
+                                                                                                 current_imu_index)
+  current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], current_lidar_index,
+                                             lidar_timestamps)
   current_lidar = lidar_range[:, current_lidar_index]
-  current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES, LIDAR_MIN_JITTER + map.res, LIDAR_MAX) # 1081 x 2
+  current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES, LIDAR_MIN_JITTER + map.res, LIDAR_MAX)
   current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
+  current_lidar_world = tranform_from_body_to_world_frame(robot_pos.get_best_particle_pos(), current_lidar_body)
 
-  # Image reading
-  current_disp_index = get_last_observation(encoder_timestamp[current_encoder_index], 0,
-                                            disp_timestamp[image_timestamp[1, :]])
-  disp_img, rgb_img = load_images(current_disp_index, image_timestamp, dataset_index)
 
   robot_trajectory = np.zeros((3, encoder_counts.shape[1]))
   index = 0
@@ -220,76 +203,75 @@ if __name__ == '__main__':
   while (current_encoder_index is not None):
     # Mapping;
     print("Executing for the %dth epoch." % (current_encoder_index,))
-    position = robot_pos.get_best_particle_pos()
+    position = np.copy(robot_pos.get_best_particle_pos())
+    # Plot obstacles for the current frame; Update log odds;
+    map.update_log_odds(current_lidar_world, position)
     robot_trajectory[:, index] = position
     index += 1
 
-    current_lidar_world = tranform_from_body_to_world_frame(position, current_lidar_body)
-
-    # Plot obstacles for the current frame; Update log odds;
-    map.update_log_odds(current_lidar_world, position)
-
-    # Texture map the floor
-    if current_encoder_index % 5 == 0:
-      # Plot every half second
-      process_image(rgb_img, disp_img, position, map)
-      title = "Texture map at %sth epoch" % current_encoder_index
-      map.plot_texture(title, img_name = directory + "/" + "Texture_mapping-" + str(current_encoder_index),
-                       save_fig = save_fig)
-
-    # Prediction;
-    time_elapsed = 0.025 if current_encoder_index == 0 else \
-      encoder_timestamp[current_encoder_index] - encoder_timestamp[current_encoder_index - 1]
-
-    # Predict the position of the particles;
-    robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed, d_sigma, yaw_sigma)
-    # robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed)
-
-    if current_encoder_index is not None and current_encoder_index % 1000 == 0:
-      title = "After prediction step displaying map at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s" % \
-              (current_encoder_index, d_sigma, yaw_sigma, num_particles)
-      map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
-               img_name= directory + '/' + str(current_encoder_index) + '-' + "Predict",
-               save_fig=save_fig)
-
-    # Update the positions of the particles
-    if num_particles != 1:
-      # update posterior if number of particles is greater than 1;
-      robot_pos.update_particles(current_lidar_body, map, deviation=linear_deviation, yaw_deviation=yaw_deviation)
-
-    # Get the next encoder measurements;
-
     current_encoder_index, current_imu_index, current_encoder_counts, yaw_v_average = next_reading(encoder_counts,
-                                                                                           encoder_timestamp,
-                                                                                           filtered_imu_yaw_velocity,
-                                                                                           imu_timestamps,
-                                                                                           current_encoder_index,
-                                                                                           current_imu_index)
+                                                                                                   encoder_timestamp,
+                                                                                                   filtered_imu_yaw_velocity,
+                                                                                                   imu_timestamps,
+                                                                                                   current_encoder_index,
+                                                                                                   current_imu_index)
+    # Prediction;
     if current_encoder_index is not None:
-      # Get the next lidar measurement;
-      current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], current_lidar_index, lidar_timestamps)
+      time_elapsed = 0.025 if current_encoder_index == 0 else \
+        encoder_timestamp[current_encoder_index] - encoder_timestamp[current_encoder_index - 1]
+
+      # Predict the position of the particles;
+      robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed, d_sigma, yaw_sigma)
+      # robot_pos.predict_particles(current_encoder_counts, yaw_v_average, time_elapsed)
+
+      # if current_encoder_index % 1000 == 0:
+      #   title = "Prediction step at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s" % \
+      #           (current_encoder_index, d_sigma, yaw_sigma, num_particles)
+      #   map.plot(robot_pos = robot_pos, robot_trajectory=None, title=title,
+      #            img_name= directory + '/' + str(current_encoder_index) + '-' + "Predict",
+      #            save_fig=save_fig)
+
+        # Get the next lidar measurement;
+      current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], current_lidar_index,
+                                                 lidar_timestamps)
       current_lidar = lidar_range[:, current_lidar_index]
       current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES, LIDAR_MIN_JITTER + map.res, LIDAR_MAX)
       current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
 
       # Image reading
-      if current_encoder_index % 5 == 0:
+      if current_encoder_index % 5 == 0 and texture_map:
         current_disp_index = get_last_observation(encoder_timestamp[current_encoder_index], 0,
                                                   disp_timestamp[image_timestamp[1, :]])
         disp_img, rgb_img = load_images(current_disp_index, image_timestamp, dataset_index)
 
+      current_lidar_world = tranform_from_body_to_world_frame(position, current_lidar_body)
 
-    # Plot every 1000 steps:
-    if current_encoder_index is not None and current_encoder_index % 1000 == 0:
-      title = "After update step displaying map at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s;" % \
-              (current_encoder_index, d_sigma, yaw_sigma, num_particles)
-      map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
-               img_name=directory + '/' + str(current_encoder_index) + '-' + "Update",
-               save_fig=save_fig)
+      # Update the positions of the particles
+      if num_particles != 1:
+        # update posterior if number of particles is greater than 1;
+        robot_pos.update_particles(current_lidar_body, map, deviation=linear_deviation, yaw_deviation=yaw_deviation)
 
-  # print("The shape of robot_trajectory is: %s" % (robot_trajectory.shape, ))
-  # trajectory_coordinate = xy_to_rc(map.xmin, map.ymin, robot_trajectory[0, :], robot_trajectory[1, :], map.res)
-  # map.plot_robot_trajectory(trajectory_coordinate)
+      # Plot every 100 steps for particles update
+      if current_encoder_index % 1000 == 0:
+        title = "Update step at the %dth epoch. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s;" % \
+                (current_encoder_index, d_sigma, yaw_sigma, num_particles)
+        if texture_map:
+          map.plot(robot_pos=None, robot_trajectory=robot_trajectory, title=title,
+                   img_name=directory + '/' + str(current_encoder_index) + '-' + "Update",
+                   save_fig=save_fig)
+        else:
+          map.plot(robot_pos = robot_pos, robot_trajectory=None, title=title,
+                   img_name=directory + '/' + str(current_encoder_index) + '-' + "Update",
+                   save_fig=save_fig)
+
+      # Texture map the floor
+      if current_encoder_index % 5 == 0 and texture_map:
+        # Plot every half second
+        process_image(rgb_img, disp_img, position, map)
+        title = "Texture map at %sth epoch" % current_encoder_index
+        map.plot_texture(title, img_name = directory + "/" + "Texture_mapping-" + str(current_encoder_index),
+                         save_fig = save_fig)
+
   title = "Finish map. D_sigma: %s; Yaw_sigma: %s; Num_particles: %s;" % \
           (d_sigma, yaw_sigma, num_particles)
   map.plot(robot_pos = None, robot_trajectory=robot_trajectory, title=title,
@@ -298,36 +280,4 @@ if __name__ == '__main__':
 
   toc(start_time)
   print("Finished plotting the data.")
-
-  """
-  Plot robot trajectory 
-
-  print("The shape of robot_trajectory is: %s" % (robot_trajectory.shape, ))
-  trajectory_coordinate = xy_to_rc(map.xrange, map.yrange, robot_trajectory[0, :], robot_trajectory[1, :], map.res)
-  map.plot_robot_trajectory(trajectory_coordinate)
-
-  print("The shape of trajectory_coordinate is: %s" % (trajectory_coordinate.shape,))
-  print("The first five coordinates of the robot are: %s" % trajectory_coordinate[:, :5])
-  print("The last five coordinates of the robot are: %s" % trajectory_coordinate[:, -5:])
-  print("Finished plotting the data.")
-  """
-
-
-
-  # print("The shape of the yaw velocities are: %s" % (imu_yaw_velocity.shape, ))
-  #
-  # print("The first five yaw velocities are: %s" % (imu_yaw_velocity[:5],))
-  # print("The first five timestamps from IMU are: %s" % (imu_timestamps[:5],))
-  #
-  #
-  # imu_diff = np.sum((imu_timestamps[1:] - imu_timestamps[:-1]))/ (imu_timestamps.shape[0] - 1)
-  # print("The average difference between two IMU measurements is: %s" % imu_diff)
-  # print("The max and min in IMU measurements is: %s, %s" % (np.max(imu_yaw_velocity), np.min(imu_yaw_velocity)))
-  #
-  #
-  # encoder_diff =  np.sum((encoder_timestamp[1:] - encoder_timestamp[:-1]))/ (encoder_timestamp.shape[0] - 1)
-  # print("The average difference between two encoder measurements is: %s" % encoder_diff)
-  #
-  # print("The first five encoder counts are: %s" % (encoder_counts[:, :5],))
-  # print("The first five timestamps for encoder are: %s" % (encoder_timestamp[:5],))
 

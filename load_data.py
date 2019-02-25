@@ -1,7 +1,7 @@
 from PIL import Image
 import numpy as np
 
-def load_data(dataset_index):
+def load_data(dataset_index, load_image = False):
   dataset = {}
 
   with np.load("Encoders%d.npz"%dataset_index) as data:
@@ -48,14 +48,15 @@ def load_data(dataset_index):
 
     dataset['imu_stamps'] = data["time_stamps"]  # acquisition times of the imu measurements
     print("The shape of imu_stamps is: %s" % (dataset['imu_stamps'].shape,))
-  
-  with np.load("Kinect%d.npz"%dataset_index) as data:
-    print("The keys of Kinect data are: %s" % (list(data.keys())))
-    dataset['disp_stamps'] = data["disparity_time_stamps"] # acquisition times of the disparity images
-    print("The shape of disp_stamps is: %s" % (dataset['disp_stamps'].shape,))
 
-    dataset['rgb_stamps'] = data["rgb_time_stamps"] # acquisition times of the rgb images
-    print("The shape of rgb_stamps is: %s" % (dataset['rgb_stamps'].shape,))
+  if load_image:
+    with np.load("Kinect%d.npz"%dataset_index) as data:
+      print("The keys of Kinect data are: %s" % (list(data.keys())))
+      dataset['disp_stamps'] = data["disparity_time_stamps"] # acquisition times of the disparity images
+      print("The shape of disp_stamps is: %s" % (dataset['disp_stamps'].shape,))
+
+      dataset['rgb_stamps'] = data["rgb_time_stamps"] # acquisition times of the rgb images
+      print("The shape of rgb_stamps is: %s" % (dataset['rgb_stamps'].shape,))
   return dataset
 
 
