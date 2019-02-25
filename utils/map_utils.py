@@ -264,7 +264,7 @@ def tranform_from_body_to_world_frame(pos, coords):
   Transform coordinates from the body to the world frame, specified by pos.
   :param pos: The position of the robot. 1 x 2 array
   :param coords: The coordinates to be transformed; n x 2 array
-  :return: The coordinates in the world frame. 2 x n array
+  :return: The coordinates in the world frame. n x 2 array
   """
   coords_hom = to_homogenuous(coords) # copy n x 3
   r_to_w_matrix = np.identity(pos.shape[0]) # 3 x 3 matrix
@@ -294,6 +294,40 @@ def from_homogenuous(coords_hom):
   """
   return np.divide(coords_hom[:, :-1], coords_hom[:, -1:])
 
+def correlate_timestamp(t1, t2):
+  """
+  Return an array of timestamps. Here we assume that t2 will be used for ground-truth correlation, and that t2 has
+  smaller lengths than t1.
+  """
+  t2_start_index = 0;
+  t1_index = 0
+
+  # First roll depth_timestamp pointer to the first timestamp that is later than the first rgb reading.
+  for i in range(t2.shape[0]):
+    if t1[0] < t2[i]:
+      t2_start_index = i
+      break
+
+  # depth_timestamp = depth_timestamp[depth_start_index:]
+  correlated_timestamp = np.zeros((2, t2.shape[0] - t2_start_index + 1)).astype(int)
+  print("T2 start index is: %s" % t2_start_index)
+
+  for j in range(correlated_timestamp.shape[1] - 1):
+
+    # reach the end of t1;
+    if t1_index >= t1.shape[0]:
+      break
+    while t1_index + 1 < t1.shape[0] and \
+                    t1[t1_index + 1] < t2[j + t2_start_index]:
+      t1_index += 1
+    correlated_timestamp[:, j] = np.array([t1_index, j + t2_start_index])
+    # Use the most recent one for correlation;
+
+  print("The shape of correlated_timestamp is: %s" % (correlated_timestamp.shape,))
+  print("The first 5 entries are: %s" % (correlated_timestamp[:, 0:5],))
+  return correlated_timestamp
+
+
 
 # convert xy to rc coordinate;
 # def xy_to_rc(x_range, y_range, x, y, res):
@@ -308,6 +342,23 @@ def xy_to_rc(x_min, y_min, x, y, res):
 
 def recover_from_log_odds(x):
   return 1 - (1 / (1 + np.exp(x)))
+
+def transform_from_d(d_image):
+  """
+  Obtain the depth, and the location(i,j) of the corresponding pixels;
+  d_image: m x n image of depth values
+  """
+  dd = -0.00304 * d_image + 3.31
+  depth = 1.03 / dd
+
+  i_matrix = np.tile(np.arange(0, d_image.shape[1], 1), (d_image.shape[0], 1)).astype(int)
+  j_matrix = np.tile(np.expand_dims(np.arange(0, d_image.shape[0], 1), axis=1), (1, d_image.shape[1])).astype(int)
+
+  rgbi = np.round((i_matrix * 526.37 + dd * (-4.5 * 1750.46) + 19276.0) / 585.051).astype(int)
+  rgbj = np.round((j_matrix * 526.37 + 16662.0) / 585.051).astype(int)
+
+  return (rgbi, rgbj, depth)
+
 
 def test_body_to_world():
   print("Testing for transform_from_body_to_world frame")

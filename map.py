@@ -28,10 +28,11 @@ class Map():
     self.sizey = int((self.ymax - self.ymin) / self.res + 1)
     self.xrange = self.xmax - self.xmin
     self.yrange = self.ymax - self.ymin
-    self.error_ratio = 4
+    self.error_ratio = math.e
     self.map = np.zeros((self.sizex, self.sizey), dtype=np.float64)  # DATA TYPE: char or int8
-    self.log_odds_min = -10   # log-odds min ratio
-    self.log_odds_max = 10    # log-odds max ratio
+    self.texture_map = np.zeros((self.sizex, self.sizey, 4), dtype = np.float64)
+    self.log_odds_min = -3   # log-odds min ratio
+    self.log_odds_max = 3   # log-odds max ratio
 
 
   def get_binary_map(self):
@@ -63,11 +64,11 @@ class Map():
       particle_positions_rc = xy_to_rc(self.xmin, self.ymin, particle_positions[0,:], particle_positions[1,:], self.res)
 
       # ax.add_patch(circ)
-      ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=1)
+      ax.scatter(particle_positions_rc[1], particle_positions_rc[0], color='red', marker='o', s=0.5)
 
     if robot_trajectory is not None and robot_pos is None:
       trajectory_positions_rc = xy_to_rc(self.xmin, self.ymin, robot_trajectory[0, :], robot_trajectory[1, :], self.res)
-      ax.scatter(trajectory_positions_rc[1], trajectory_positions_rc[0], color='red', marker='o', s=1)
+      ax.scatter(trajectory_positions_rc[1], trajectory_positions_rc[0], color='red', marker='o', s=0.2)
 
     # Plot origin at the lower-left corner;
     ax.imshow(map_prob, cmap="gray", origin = "upper")
@@ -80,6 +81,40 @@ class Map():
     else:
       plt.show()
 
+  def plot_texture(self, title, img_name, save_fig = False):
+    texture_rgb = np.zeros((self.texture_map.shape[0], self.texture_map.shape[1], 3))
+    counts = self.texture_map[:, :, -1]
+    nonzeros = np.where(counts != 0)
+
+    texture_rgb[:, :, 0][nonzeros] = np.rint(self.texture_map[:, :, 0][nonzeros] / counts[nonzeros])
+    texture_rgb[:, :, 1][nonzeros] = np.rint(self.texture_map[:, :, 1][nonzeros] / counts[nonzeros])
+    texture_rgb[:, :, 2][nonzeros] = np.rint(self.texture_map[:, :, 2][nonzeros] / counts[nonzeros])
+    # division in two steps: first with nonzero cells, and then zero cells
+    # texture_rgb[nonzeros, :] = texture_rgb[nonzeros, :] / counts[nonzeros]
+    # print("The max of texture map is: %s" % (np.max(self.texture_map)))
+    # print("The max of rgb is: %s" % (np.max(self.texture_map[:, :, 0:3])))
+    # print("The max of count is: %s" % (np.max(self.texture_map[:, :, -1])))
+    # texture = np.divide(texture_rgb, counts, out=np.zeros_like(texture_rgb), where=counts!=0)
+    # np.nan_to_num(texture, copy = False)
+    # print("After rounding, the max of texture is: %s" % (np.max(texture_rgb)))
+    # print("The max of R channel is: %s" % (np.max(texture_rgb[:, :, 0])))
+    # print("The max of G channel is: %s" % (np.max(texture_rgb[:, :, 1])))
+    # print("The max of B channel is: %s" % (np.max(texture_rgb[:, :, 2])))
+    plt.imshow(texture_rgb.astype(int))
+    plt.title(title)
+
+    if save_fig:
+      plt.savefig(img_name)
+      plt.clf()
+    else:
+      plt.show()
+
+
+  def update_texture(self, pos, rgb):
+    r = pos[0]
+    c = pos[1]
+    self.texture_map[r, c, :-1] = self.texture_map[r, c, :-1] + rgb
+    self.texture_map[r, c, -1]  = self.texture_map[r, c, -1] + 1  # update counts
 
   def plot_robot_trajectory(self, trajectory):
     print("The max index of trajectory is: %s" % np.max(trajectory))

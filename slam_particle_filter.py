@@ -1,10 +1,11 @@
-from load_data import load_data
+from load_data import load_data, load_images
 from map import Map
 from robot_pos import RobotPos
 from utils.map_utils import transform_to_lidar_frame, transform_from_lidar_to_body_frame,\
-  tranform_from_body_to_world_frame, xy_to_rc, tic, toc
+  tranform_from_body_to_world_frame, xy_to_rc, tic, toc, correlate_timestamp, transform_from_d
 from utils.robot_utils import LIDAR_ANGLES, LIDAR_MAX, LIDAR_MIN_JITTER
 from utils.signal_process_utils import low_pass_imu
+from utils.camera_utils import from_homog, to_homogenuous, transform_from_camera_to_body_frame
 
 import numpy as np
 import os
@@ -49,30 +50,77 @@ def next_reading(encoder_counts, encoder_timestamps, imu_yaw_velocity, imu_times
       yaw_v_average = sum(yaw_velocity) / len(yaw_velocity)
     return (next_encoder_index, next_imu_index, next_encoder_count, yaw_v_average)
 
-def get_last_lidar_measurement(encoder_timestamp, current_lidar_index, lidar_timestamps):
+def get_last_observation(encoder_timestamp, current_observation_index, observation_timestamps):
   """
   Based on the current time stamp of the encoder, give the last measurement of the lidar;
   :param encoder_timestamp: The timestamp of the encoder;
-  :param current_lidar_index: The index of the previous lidar measurement;
-  :param lidar_timestamps: The timestamps of the lidar measurements;
+  :param current_observation_index: The index of the previous lidar measurement;
+  :param observation_timestamps: The timestamps of the lidar measurements;
   :return: The index of the next lidar measurment;
   """
-  next_measurement_index = current_lidar_index
-  for i in range(current_lidar_index + 1, lidar_timestamps.shape[0]):
-    if lidar_timestamps[i] > encoder_timestamp:
+  next_observation_index = current_observation_index
+  for i in range(current_observation_index + 1, observation_timestamps.shape[0]):
+    if observation_timestamps[i] > encoder_timestamp:
       # return previous lidar index
       break
     else:
-      next_measurement_index = i
-  return next_measurement_index
+      next_observation_index = i
+  return next_observation_index
+
+def process_image(rgb_image, disparity_img, robot_pos, map):
+  # start = tic()
+  rgbi, rgbj, depth = transform_from_d(disparity_img)
+  valid_pixels = np.logical_and(rgbi >= 0, rgbi < 640)
+  valid_pixels = np.logical_and.reduce((valid_pixels, rgbj >= 0, rgbj < 480, depth > 0))
+
+  valid_depth = np.expand_dims(depth[valid_pixels], axis=1)
+  valid_rgbj = np.expand_dims(rgbj[valid_pixels], axis=1)
+  valid_rgbi = np.expand_dims(rgbi[valid_pixels], axis=1)
+
+  rgb_ijd = np.concatenate((valid_rgbi, valid_rgbj, valid_depth), axis=1)
+
+  ground_positions = np.zeros((rgb_ijd.shape[0], 2))
+  ground_count = 0
+  rgb_values = np.zeros((rgb_ijd.shape[0], 3))
+  for i in range(rgb_ijd.shape[0]):
+    # print("The pixels coordinate is: %s; Depth is: %s" % (rgb_jid[i, 0:2],rgb_jid[i, -1]))
+    p = from_homog(transform_from_camera_to_body_frame(np.expand_dims(rgb_ijd[i, :], axis=1)))
+    # z_dist[i] = p[-1]
+    # print("The z of the pixel in the robot frame is: %s" % p[-1])
+
+    # mask out pixels that are below or over a threshold.
+    if p[-1] < 0:
+      ground_positions[ground_count, :] = p[:-1].reshape(2)
+      rgb_values[ground_count, :] = rgb_img[int(rgb_ijd[i, 1]), int(rgb_ijd[i, 0]), :]
+      ground_count += 1
+
+  ground_positions = ground_positions[:ground_count, :]
+  rgb_values = rgb_values[:ground_count, :]
+  world_pos = tranform_from_body_to_world_frame(robot_pos, ground_positions) #n x 2
+  rc = xy_to_rc(map.xmin, map.ymin, world_pos[:, 0], world_pos[:, 1], map.res)
+
+  for i in range(rc.shape[1]):
+    map.update_texture(rc[:, i], rgb_values[i, :])
+  # toc(start)
+
+
+
+
+
 
 if __name__ == '__main__':
+  dataset_index = 20
+
   d_sigma = float(sys.argv[1])
   yaw_sigma = float(sys.argv[2])
   num_particles = int(sys.argv[3])
   save_fig = bool(sys.argv[4])
 
-  directory = str(d_sigma) + '-' + str(yaw_sigma) + '-' + str(num_particles)
+  directory = ""
+  if num_particles == 1:
+    directory = "dead-reckoning"
+  else:
+    directory = str(d_sigma) + "-" + str(yaw_sigma) + "-" + str(num_particles)
   os.mkdir(directory)
 
   print("The linear velocity noise is: %s" % d_sigma)
@@ -82,12 +130,12 @@ if __name__ == '__main__':
   start_time = tic()
 
   # Load data
-  data = load_data(dataset_index = 20)
+  data = load_data(dataset_index = dataset_index)
   config = {
-    'res': 0.2,
-    'xmin': -30,
+    'res': 0.05,
+    'xmin': -10,
     'xmax': 30,
-    'ymin': -30,
+    'ymin': -10,
     'ymax': 30
   }
 
@@ -107,8 +155,8 @@ if __name__ == '__main__':
 
 
   # Preprocess IMU and Encoder measurements;
-  encoder_counts = data['encoder_counts'][:, 300:] # Skipping the first 300 hundred measurements;
-  encoder_timestamp = data['encoder_stamps'][300:]
+  encoder_counts = data['encoder_counts'][:, 300:-1] # Skipping the first 400 hundred measurements;
+  encoder_timestamp = data['encoder_stamps'][300:-1]
 
   imu_yaw_velocity = data['imu_angular_velocity'][2, :]
   imu_timestamps = data['imu_stamps']
@@ -118,6 +166,14 @@ if __name__ == '__main__':
   # Transform the lidar data to the body frame;
   lidar_timestamps = data['lidar_stamps']
   lidar_range = data['lidar_ranges'] # 1081 x 4962
+
+  # Image manipulation
+  depth_images_prefix = './dataRGBD/Disparity%s/disparity%s_' % (dataset_index, dataset_index)
+  rgb_images_prefix = './dataRGBD/RGB%s/rgb%s_' % (dataset_index, dataset_index)
+
+  disp_timestamp = data['disp_stamps']
+  rgb_timestamp = data['rgb_stamps']
+  image_timestamp = correlate_timestamp(rgb_timestamp, disp_timestamp)
 
   """
   figure = plt.figure(figsize=(10,10))
@@ -142,10 +198,15 @@ if __name__ == '__main__':
                                                                                        current_imu_index)
 
   # First lidar reading;
-  current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], 0, lidar_timestamps)
+  current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], 0, lidar_timestamps)
   current_lidar = lidar_range[:, current_lidar_index]
   current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES, LIDAR_MIN_JITTER + map.res, LIDAR_MAX) # 1081 x 2
   current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
+
+  # Image reading
+  current_disp_index = get_last_observation(encoder_timestamp[current_encoder_index], 0,
+                                            disp_timestamp[image_timestamp[1, :]])
+  disp_img, rgb_img = load_images(current_disp_index, image_timestamp, dataset_index)
 
   robot_trajectory = np.zeros((3, encoder_counts.shape[1]))
   index = 0
@@ -168,6 +229,14 @@ if __name__ == '__main__':
     # Plot obstacles for the current frame; Update log odds;
     map.update_log_odds(current_lidar_world, position)
 
+    # Texture map the floor
+    if current_encoder_index % 5 == 0:
+      # Plot every half second
+      process_image(rgb_img, disp_img, position, map)
+      title = "Texture map at %sth epoch" % current_encoder_index
+      map.plot_texture(title, img_name = directory + "/" + "Texture_mapping-" + str(current_encoder_index),
+                       save_fig = save_fig)
+
     # Prediction;
     time_elapsed = 0.025 if current_encoder_index == 0 else \
       encoder_timestamp[current_encoder_index] - encoder_timestamp[current_encoder_index - 1]
@@ -184,7 +253,9 @@ if __name__ == '__main__':
                save_fig=save_fig)
 
     # Update the positions of the particles
-    robot_pos.update_particles(current_lidar_body, map, deviation=linear_deviation, yaw_deviation=yaw_deviation)
+    if num_particles != 1:
+      # update posterior if number of particles is greater than 1;
+      robot_pos.update_particles(current_lidar_body, map, deviation=linear_deviation, yaw_deviation=yaw_deviation)
 
     # Get the next encoder measurements;
 
@@ -196,10 +267,17 @@ if __name__ == '__main__':
                                                                                            current_imu_index)
     if current_encoder_index is not None:
       # Get the next lidar measurement;
-      current_lidar_index = get_last_lidar_measurement(encoder_timestamp[current_encoder_index], current_lidar_index, lidar_timestamps)
+      current_lidar_index = get_last_observation(encoder_timestamp[current_encoder_index], current_lidar_index, lidar_timestamps)
       current_lidar = lidar_range[:, current_lidar_index]
       current_lidar_xy = transform_to_lidar_frame(current_lidar, LIDAR_ANGLES, LIDAR_MIN_JITTER + map.res, LIDAR_MAX)
       current_lidar_body = transform_from_lidar_to_body_frame(current_lidar_xy)
+
+      # Image reading
+      if current_encoder_index % 5 == 0:
+        current_disp_index = get_last_observation(encoder_timestamp[current_encoder_index], 0,
+                                                  disp_timestamp[image_timestamp[1, :]])
+        disp_img, rgb_img = load_images(current_disp_index, image_timestamp, dataset_index)
+
 
     # Plot every 1000 steps:
     if current_encoder_index is not None and current_encoder_index % 1000 == 0:

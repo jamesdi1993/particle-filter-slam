@@ -1,3 +1,4 @@
+from PIL import Image
 import numpy as np
 
 def load_data(dataset_index):
@@ -57,3 +58,29 @@ def load_data(dataset_index):
     print("The shape of rgb_stamps is: %s" % (dataset['rgb_stamps'].shape,))
   return dataset
 
+
+def load_images(disp_index, correlated_timestamp, dataset_index):
+  """
+  Load rgb and disparitiy images.
+  :param disp_index: The index of the disparity image.
+  :param correlated_timestamp: The timestamps of the images.
+  :return: disparity and rgb image.
+  """
+  rgb_index = correlated_timestamp[0, disp_index]
+
+  depth_images_prefix = './dataRGBD/Disparity%s/disparity%s_' % (dataset_index, dataset_index)
+  rgb_images_prefix = './dataRGBD/RGB%s/rgb%s_' % (dataset_index, dataset_index)
+
+  depth_img_file = depth_images_prefix + str(correlated_timestamp[1, disp_index] + 1) + ".png"
+  rgb_img_file = rgb_images_prefix + str(correlated_timestamp[0, rgb_index] + 1) + ".png"
+
+  print("Reading depth image file: %s" % depth_img_file)
+  print("Reading rgb image file: %s" % rgb_img_file)
+
+  depth_img = Image.open(depth_img_file)
+  disparity_img = np.array(depth_img.getdata(), np.uint16).reshape(depth_img.size[1], depth_img.size[0])
+
+  rgb_img = Image.open(rgb_img_file)
+  rgb_img = np.array(rgb_img.getdata(), np.uint8).reshape(rgb_img.size[1], rgb_img.size[0], 3)
+
+  return disparity_img, rgb_img
